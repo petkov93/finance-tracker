@@ -1,0 +1,40 @@
+{% extends "financetracker/base.html" %}
+{% block title %}Sign Up — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-header">
+      <span class="auth-icon">💰</span>
+      <h1 class="auth-title">Create account</h1>
+      <p class="auth-sub">Start tracking your finances today</p>
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      {% for field in form %}
+        <div class="form-group">
+          <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+          <input type="{{ field.field.widget.input_type }}"
+                 name="{{ field.html_name }}"
+                 id="{{ field.id_for_label }}"
+                 class="form-control"
+                 placeholder="{{ field.label }}"
+                 {% if field.value %}value="{{ field.value }}"{% endif %} />
+          {% if field.errors %}
+            <div class="form-error">{{ field.errors.0 }}</div>
+          {% endif %}
+          {% if field.help_text %}
+            <div class="form-hint">{{ field.help_text }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-primary btn-full">Create account</button>
+    </form>
+
+    <p class="auth-footer">
+      Already have an account? <a href="{% url 'login' %}" class="auth-link">Log in</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

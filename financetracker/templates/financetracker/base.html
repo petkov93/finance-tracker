@@ -1,0 +1,65 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Finance Tracker{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="{% static 'financetracker/css/style.css' %}" />
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <span class="brand-icon">💰</span>
+      <span class="brand-name">Finance Tracker</span>
+    </div>
+    <div class="navbar-links">
+      {% if user.is_authenticated %}
+        <div class="user-menu">
+          <span class="user-name">{{ user.username }}</span>
+          <form method="post" action="{% url 'logout' %}" style="display:inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-ghost btn-sm">Log out</button>
+          </form>
+        </div>
+      {% else %}
+        <a href="{% url 'login' %}" class="btn btn-ghost">Log in</a>
+        <a href="{% url 'register' %}" class="btn btn-primary">Sign up</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  {% if user.is_authenticated %}
+  <div class="subnav">
+    <a href="{% url 'dashboard' %}" class="subnav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </a>
+    <a href="{% url 'statistics' %}" class="subnav-link {% if request.resolver_match.url_name == 'statistics' %}active{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Statistics
+    </a>
+    <a href="{% url 'investments' %}" class="subnav-link {% if request.resolver_match.url_name == 'investments' or request.resolver_match.url_name == 'add_investment' or request.resolver_match.url_name == 'edit_investment' %}active{% endif %}">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      Investments
+    </a>
+  </div>
+  {% endif %}
+
+  <main class="main-content">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <p>Finance Tracker &mdash; track every dollar, every day.</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,36 @@
+{% extends "financetracker/base.html" %}
+{% block title %}Log In — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-header">
+      <span class="auth-icon">💰</span>
+      <h1 class="auth-title">Welcome back</h1>
+      <p class="auth-sub">Log in to your Finance Tracker</p>
+    </div>
+
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label" for="{{ form.username.id_for_label }}">Username</label>
+        <input type="text" name="username" id="{{ form.username.id_for_label }}"
+               class="form-control" placeholder="Your username" autofocus
+               value="{{ form.username.value|default:'' }}" />
+        {% if form.username.errors %}<div class="form-error">{{ form.username.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="{{ form.password.id_for_label }}">Password</label>
+        <input type="password" name="password" id="{{ form.password.id_for_label }}"
+               class="form-control" placeholder="Your password" />
+        {% if form.password.errors %}<div class="form-error">{{ form.password.errors.0 }}</div>{% endif %}
+      </div>
+      <button type="submit" class="btn btn-primary btn-full">Log in</button>
+    </form>
+
+    <p class="auth-footer">
+      Don't have an account? <a href="{% url 'register' %}" class="auth-link">Sign up</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

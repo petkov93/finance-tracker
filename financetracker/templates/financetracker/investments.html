@@ -1,0 +1,75 @@
+{% extends "financetracker/base.html" %}
+{% block title %}Investments — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Investments</h1>
+  <a href="{% url 'add_investment' %}" class="btn btn-primary">+ Add Entry</a>
+</div>
+
+<div class="summary-grid">
+  <div class="summary-card balance {% if portfolio_value >= 0 %}positive{% else %}negative{% endif %}">
+    <div class="summary-label">Portfolio Value</div>
+    <div class="summary-value">{{ portfolio_value|floatformat:2 }} CZK</div>
+    <div class="summary-sub">invested + profit</div>
+  </div>
+  <div class="summary-card invested">
+    <div class="summary-label">Total Invested</div>
+    <div class="summary-value">{{ total_invested|floatformat:2 }} CZK</div>
+    <div class="summary-sub">{{ invested_count }} entries</div>
+  </div>
+  <div class="summary-card income">
+    <div class="summary-label">Total Profit</div>
+    <div class="summary-value">{{ total_profit|floatformat:2 }} CZK</div>
+    <div class="summary-sub">{{ profit_count }} entries</div>
+  </div>
+</div>
+
+<section class="section">
+  <div class="section-header">
+    <h2 class="section-title">Recent Entries</h2>
+    <span class="link-muted">{{ entry_count }} total</span>
+  </div>
+
+  {% if entries %}
+    <div class="transaction-list">
+      {% for e in entries %}
+        <div class="transaction-row">
+          <div class="transaction-left">
+            <div class="transaction-icon {% if e.type == 'profit' %}icon-income{% else %}icon-invested{% endif %}">
+              {% if e.type == 'profit' %}📈{% else %}💼{% endif %}
+            </div>
+            <div class="transaction-info">
+              <div class="transaction-desc">{{ e.description|default:"No description" }}</div>
+              <div class="transaction-meta">
+                {{ e.date|date:"d.m.Y" }}
+                &nbsp;·&nbsp;
+                <span class="badge">{% if e.type == 'profit' %}Profit{% else %}Invested{% endif %}</span>
+              </div>
+            </div>
+          </div>
+          <div class="transaction-right">
+            <div class="transaction-amount {% if e.type == 'profit' %}amount-income{% else %}amount-invested{% endif %}">
+              {% if e.type == 'profit' %}+{% endif %}{{ e.amount|floatformat:2 }} CZK
+            </div>
+            <div class="transaction-actions">
+              <a href="{% url 'edit_investment' e.pk %}" class="action-link edit">Edit</a>
+              <form method="post" action="{% url 'delete_investment' e.pk %}" style="display:inline" onsubmit="return confirm('Delete this entry?')">
+                {% csrf_token %}
+                <button type="submit" class="action-link delete">Delete</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📈</div>
+      <p class="empty-title">No investment entries yet</p>
+      <p class="empty-sub">Track how much you've invested and your profits in CZK.</p>
+      <a href="{% url 'add_investment' %}" class="btn btn-primary">Add your first entry</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

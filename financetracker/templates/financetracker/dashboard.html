@@ -1,0 +1,74 @@
+{% extends "financetracker/base.html" %}
+{% block title %}Dashboard — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">Dashboard</h1>
+  <a href="{% url 'add_transaction' %}" class="btn btn-primary">+ Add Transaction</a>
+</div>
+
+<div class="summary-grid">
+  <div class="summary-card balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
+    <div class="summary-label">Balance</div>
+    <div class="summary-value">{{ balance|floatformat:2 }} CZK</div>
+    <div class="summary-sub">income minus expenses</div>
+  </div>
+  <div class="summary-card income">
+    <div class="summary-label">Total Income</div>
+    <div class="summary-value">{{ total_income|floatformat:2 }} CZK</div>
+    <div class="summary-sub">all time</div>
+  </div>
+  <div class="summary-card expense">
+    <div class="summary-label">Total Expenses</div>
+    <div class="summary-value">{{ total_expense|floatformat:2 }} CZK</div>
+    <div class="summary-sub">all time</div>
+  </div>
+</div>
+
+<section class="section">
+  <div class="section-header">
+    <h2 class="section-title">Recent Transactions</h2>
+    <a href="{% url 'statistics' %}" class="link-muted">View statistics →</a>
+  </div>
+
+  {% if transactions %}
+    <div class="transaction-list">
+      {% for t in transactions %}
+        <div class="transaction-row">
+          <div class="transaction-left">
+            <div class="transaction-icon {% if t.type == 'income' %}icon-income{% else %}icon-expense{% endif %}">
+              {% if t.category %}{{ t.category.icon }}{% elif t.type == 'income' %}↑{% else %}↓{% endif %}
+            </div>
+            <div class="transaction-info">
+              <div class="transaction-desc">{{ t.description|default:"No description" }}</div>
+              <div class="transaction-meta">
+                {{ t.date|date:"d.m.Y" }}
+                {% if t.category %}&nbsp;·&nbsp;<span class="badge">{{ t.category.name }}</span>{% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="transaction-right">
+            <div class="transaction-amount {% if t.type == 'income' %}amount-income{% else %}amount-expense{% endif %}">
+              {% if t.type == 'income' %}+{% else %}-{% endif %}{{ t.amount|floatformat:2 }} CZK
+            </div>
+            <div class="transaction-actions">
+              <a href="{% url 'edit_transaction' t.pk %}" class="action-link edit">Edit</a>
+              <form method="post" action="{% url 'delete_transaction' t.pk %}" style="display:inline" onsubmit="return confirm('Delete this transaction?')">
+                {% csrf_token %}
+                <button type="submit" class="action-link delete">Delete</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📊</div>
+      <p class="empty-title">No transactions yet</p>
+      <p class="empty-sub">Start by adding your first income or expense.</p>
+      <a href="{% url 'add_transaction' %}" class="btn btn-primary">Add your first transaction</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
