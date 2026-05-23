@@ -224,4 +224,4 @@ python manage.py check --deploy   # production settings check
 
 ## License
 
-Private / personal project. Use and modify as you like.
+MIT — see [LICENSE](LICENSE).
