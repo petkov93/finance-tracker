@@ -227,7 +227,7 @@ def investments(request):
     )
     total_invested = totals["total_invested"] or Decimal("0")
     total_profit = totals["total_profit"] or Decimal("0")
-    portfolio_value = total_invested + total_profit
+    portfolio_value = total_invested - total_profit
 
     invested_count = qs.filter(type="invested").count()
     profit_count = qs.filter(type="profit").count()
