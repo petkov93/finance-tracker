@@ -53,8 +53,19 @@ def register_view(request):
 @login_required
 def dashboard(request):
     qs = Transaction.objects.filter(user=request.user).select_related("category")
-    transactions = qs[:20]
-    totals = qs.aggregate(
+    all_categories = Category.objects.all()
+    
+    # Filtering
+    category_id = request.GET.get("category")
+    q_query = request.GET.get("q", "")
+
+    if category_id:
+        qs = qs.filter(category__id=category_id)
+    if q_query:
+        qs = qs.filter(Q(description__icontains=q_query) | Q(category__name__icontains=q_query))
+    
+    transactions = qs
+    totals = Transaction.objects.filter(user=request.user).aggregate(
         total_income=Sum("amount", filter=Q(type="income")),
         total_expense=Sum("amount", filter=Q(type="expense")),
     )
@@ -64,6 +75,9 @@ def dashboard(request):
 
     return render(request, "financetracker/dashboard.html", {
         "transactions": transactions,
+        "all_categories": all_categories,
+        "selected_category": category_id,
+        "q_query": q_query,
         "total_income": total_income,
         "total_expense": total_expense,
         "balance": balance,
@@ -142,10 +156,11 @@ def statistics(request):
     if from_date > to_date:
         from_date, to_date = to_date, from_date
 
+    qs_filtered = qs.filter(date__gte=from_date, date__lte=to_date)
+
     # Monthly chart filtered by date range
     monthly_qs = (
-        qs
-        .filter(date__gte=from_date, date__lte=to_date)
+        qs_filtered
         .annotate(month=TruncMonth("date"))
         .values("month", "type")
         .annotate(total=Sum("amount"))
@@ -163,9 +178,9 @@ def statistics(request):
     monthly_income  = [months_map[m]["income"]  for m in month_labels]
     monthly_expense = [months_map[m]["expense"] for m in month_labels]
 
-    # Category breakdowns (all time, not date-filtered)
+    # Category breakdowns (filtered by date range)
     cat_expenses = (
-        qs.filter(type="expense", category__isnull=False)
+        qs_filtered.filter(type="expense", category__isnull=False)
         .values("category__name")
         .annotate(total=Sum("amount"))
         .order_by("-total")
@@ -175,7 +190,7 @@ def statistics(request):
     has_expense_categories = bool(cat_labels)
 
     cat_income = (
-        qs.filter(type="income", category__isnull=False)
+        qs_filtered.filter(type="income", category__isnull=False)
         .values("category__name")
         .annotate(total=Sum("amount"))
         .order_by("-total")
@@ -184,17 +199,17 @@ def statistics(request):
     income_cat_values = [float(r["total"]) for r in cat_income]
     has_income_categories = bool(income_cat_labels)
 
-    # Summary totals (all time)
-    totals = qs.aggregate(
+    # Summary totals (filtered by date range)
+    totals = qs_filtered.aggregate(
         total_income=Sum("amount", filter=Q(type="income")),
         total_expense=Sum("amount", filter=Q(type="expense")),
     )
     total_income  = float(totals["total_income"]  or 0)
     total_expense = float(totals["total_expense"] or 0)
 
-    total_count   = qs.count()
-    income_count  = qs.filter(type="income").count()
-    expense_count = qs.filter(type="expense").count()
+    total_count   = qs_filtered.count()
+    income_count  = qs_filtered.filter(type="income").count()
+    expense_count = qs_filtered.filter(type="expense").count()
 
     return render(request, "financetracker/statistics.html", {
         "month_labels":       json.dumps(month_labels),

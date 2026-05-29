@@ -476,6 +476,15 @@ a { color: inherit; text-decoration: none; }
 .subnav-link:hover { color: var(--text); background: var(--surface2); }
 .subnav-link.active { color: var(--text); background: var(--surface2); }
 
+/* ===== Transaction Filter Form ===== */
+.transaction-filter-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
 /* ===== Date range filter ===== */
 .chart-card-header {
   display: flex;
