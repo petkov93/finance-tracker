@@ -246,7 +246,11 @@ a { color: inherit; text-decoration: none; }
 .amount-income  { color: var(--income); }
 .amount-expense { color: var(--expense); }
 
-.transaction-actions { display: flex; gap: 0.5rem; }
+.transaction-actions {
+  display: flex;
+  align-items: center; /* keep everything aligned on the same horizontal line */
+  gap: 0.5rem;
+}
 
 .action-link {
   font-size: 0.78rem;
@@ -258,6 +262,9 @@ a { color: inherit; text-decoration: none; }
   font-family: inherit;
   transition: color 0.15s;
   padding: 0;
+  display: inline-flex;  /* Normalizes rendering as inline flex containers */
+  align-items: center;
+  line-height: inherit;  /* Forces <button> to inherit same line-height as <a> */
 }
 .action-link.edit:hover   { color: var(--accent-h); }
 .action-link.delete:hover { color: var(--expense); }
