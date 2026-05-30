@@ -101,6 +101,52 @@ a { color: inherit; text-decoration: none; }
 }
 .btn-ghost:hover { background: var(--surface2); color: var(--text); }
 
+.btn-danger {
+  background: transparent;
+  color: var(--expense);
+  border: 1px solid var(--expense);
+}
+.btn-danger:hover { background: rgba(239, 68, 68, 0.1); }
+.btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.settings-section { margin-bottom: 1.5rem; }
+.settings-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+.settings-section-desc {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+}
+.danger-zone .form-card {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.danger-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0;
+}
+.danger-action + .danger-action {
+  border-top: 1px solid var(--border);
+}
+.danger-action-info h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+.danger-action-info p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
 /* ===== Main Layout ===== */
 .main-content {
   flex: 1;
@@ -455,7 +501,9 @@ a { color: inherit; text-decoration: none; }
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--muted);
+  text-decoration: none;
 }
+.user-name:hover { color: var(--text); }
 
 /* ===== Sub-nav ===== */
 .subnav {

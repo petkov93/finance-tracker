@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib import messages
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.db.models import Q, Sum
@@ -12,7 +12,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .models import Transaction, Category, InvestmentEntry
-from .forms import TransactionForm, InvestmentEntryForm
+from .forms import (
+    CustomPasswordChangeForm,
+    InvestmentEntryForm,
+    ProfileForm,
+    TransactionForm,
+)
 
 
 def login_view(request):
@@ -301,3 +306,50 @@ def delete_investment(request, pk):
     entry.delete()
     messages.success(request, "Investment entry deleted.")
     return redirect("investments")
+
+
+@login_required
+def settings_view(request):
+    profile_form = ProfileForm(instance=request.user)
+    password_form = CustomPasswordChangeForm(user=request.user)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "profile":
+            profile_form = ProfileForm(request.POST, instance=request.user)
+            if profile_form.is_valid():
+                profile_form.save()
+                messages.success(request, "Account details updated.")
+                return redirect("settings")
+        elif action == "password":
+            password_form = CustomPasswordChangeForm(user=request.user, data=request.POST)
+            if password_form.is_valid():
+                password_form.save()
+                update_session_auth_hash(request, password_form.user)
+                messages.success(request, "Password changed successfully.")
+                return redirect("settings")
+
+    return render(request, "financetracker/settings.html", {
+        "profile_form": profile_form,
+        "password_form": password_form,
+        "transaction_count": Transaction.objects.filter(user=request.user).count(),
+        "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
+    })
+
+
+@login_required
+@require_POST
+def clear_all_transactions(request):
+    count = Transaction.objects.filter(user=request.user).count()
+    Transaction.objects.filter(user=request.user).delete()
+    messages.success(request, f"Deleted all {count} transaction(s).")
+    return redirect("settings")
+
+
+@login_required
+@require_POST
+def clear_all_investments(request):
+    count = InvestmentEntry.objects.filter(user=request.user).count()
+    InvestmentEntry.objects.filter(user=request.user).delete()
+    messages.success(request, f"Deleted all {count} investment entr{'y' if count == 1 else 'ies'}.")
+    return redirect("settings")
