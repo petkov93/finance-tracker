@@ -2,39 +2,45 @@
 {% block title %}Statistics — Finance Tracker{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">Statistics</h1>
-</div>
-
-<div class="summary-grid">
-  <div class="summary-card balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
-    <div class="summary-label">Net Balance</div>
-    <div class="summary-value">{{ balance|floatformat:2 }} CZK</div>
-    <div class="summary-sub">{{ total_count }} total transactions</div>
-  </div>
-  <div class="summary-card income">
-    <div class="summary-label">Total Income</div>
-    <div class="summary-value">{{ total_income|floatformat:2 }} CZK</div>
-    <div class="summary-sub">{{ income_count }} transactions</div>
-  </div>
-  <div class="summary-card expense">
-    <div class="summary-label">Total Expenses</div>
-    <div class="summary-value">{{ total_expense|floatformat:2 }} CZK</div>
-    <div class="summary-sub">{{ expense_count }} transactions</div>
+<div class="page-content">
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Insights</p>
+    <h1 class="page-title">Statistics</h1>
   </div>
 </div>
 
-<div class="charts-grid">
+<div class="hero-stats hero-stats--compact animate-in animate-in-delay-1">
+  <div class="hero-balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
+    <span class="summary-label">Net balance</span>
+    <span class="hero-amount">{{ balance|floatformat:2 }} <small>CZK</small></span>
+    <span class="summary-sub">{{ total_count }} transactions</span>
+  </div>
+  <div class="hero-secondary">
+    <div class="stat-pill income">
+      <span class="summary-label">Income</span>
+      <span class="stat-pill-value">{{ total_income|floatformat:2 }}</span>
+      <span class="summary-sub">{{ income_count }} txns</span>
+    </div>
+    <div class="stat-pill expense">
+      <span class="summary-label">Expenses</span>
+      <span class="stat-pill-value">{{ total_expense|floatformat:2 }}</span>
+      <span class="summary-sub">{{ expense_count }} txns</span>
+    </div>
+  </div>
+</div>
+
+<div class="charts-grid animate-in animate-in-delay-2">
   <div class="chart-card wide">
     <div class="chart-card-header">
-      <h2 class="chart-title">Monthly Overview</h2>
+      <h2 class="chart-title">Monthly overview</h2>
       <form method="get" class="date-range-form">
         <div class="date-range-inputs">
-          <label class="date-range-label">From</label>
-          <input type="date" name="from_date" value="{{ from_date }}" class="date-input" />
-          <label class="date-range-label">To</label>
-          <input type="date" name="to_date" value="{{ to_date }}" class="date-input" />
-          <button type="submit" class="btn btn-primary btn-sm">Apply Filters</button>
+          <label class="date-range-label" for="from-date">From</label>
+          <input type="date" name="from_date" id="from-date" value="{{ from_date }}" class="date-input" />
+          <label class="date-range-label" for="to-date">To</label>
+          <input type="date" name="to_date" id="to-date" value="{{ to_date }}" class="date-input" />
+          <button type="submit" class="btn btn-primary btn-sm">Apply</button>
           <a href="{% url 'statistics' %}" class="btn btn-ghost btn-sm">Reset</a>
         </div>
       </form>
@@ -45,7 +51,7 @@
   </div>
 
   <div class="chart-card">
-    <h2 class="chart-title">Expenses by Category</h2>
+    <h2 class="chart-title">Expenses by category</h2>
     <div class="chart-container chart-container--sm">
       <canvas id="expensePieChart"></canvas>
     </div>
@@ -55,7 +61,7 @@
   </div>
 
   <div class="chart-card">
-    <h2 class="chart-title">Income by Category</h2>
+    <h2 class="chart-title">Income by category</h2>
     <div class="chart-container chart-container--sm">
       <canvas id="incomePieChart"></canvas>
     </div>
@@ -66,11 +72,17 @@
 </div>
 
 <script>
-  const INCOME_COLOR  = "rgba(16, 185, 129, 0.85)";
-  const EXPENSE_COLOR = "rgba(239, 68, 68, 0.85)";
+  const FONT_UI = "'Source Sans 3', system-ui, sans-serif";
+  const FONT_MONO = "'IBM Plex Mono', monospace";
+  const INCOME_COLOR  = "rgba(45, 106, 79, 0.88)";
+  const EXPENSE_COLOR = "rgba(193, 68, 14, 0.88)";
+  const GRID_COLOR    = "rgba(28, 25, 23, 0.08)";
+  const TICK_COLOR    = "#78716c";
+  const LEGEND_COLOR  = "#44403c";
+  const SURFACE_COLOR = "#fffdf8";
   const PIE_COLORS = [
-    "#6366f1","#f59e0b","#10b981","#ef4444","#3b82f6",
-    "#ec4899","#8b5cf6","#14b8a6","#f97316","#a3e635"
+    "#0f766e", "#b45309", "#2d6a4f", "#c1440e", "#1d4ed8",
+    "#9d174d", "#5b21b6", "#0e7490", "#ca8a04", "#4d7c0f"
   ];
 
   const monthlyCtx = document.getElementById("monthlyChart").getContext("2d");
@@ -79,16 +91,27 @@
     data: {
       labels: {{ month_labels|safe }},
       datasets: [
-        { label: "Income",  data: {{ monthly_income|safe }},  backgroundColor: INCOME_COLOR,  borderRadius: 6 },
-        { label: "Expense", data: {{ monthly_expense|safe }}, backgroundColor: EXPENSE_COLOR, borderRadius: 6 }
+        { label: "Income",  data: {{ monthly_income|safe }},  backgroundColor: INCOME_COLOR,  borderRadius: 4 },
+        { label: "Expense", data: {{ monthly_expense|safe }}, backgroundColor: EXPENSE_COLOR, borderRadius: 4 }
       ]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: "#cbd5e1", font: { family: "Inter" } } } },
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: LEGEND_COLOR, font: { family: FONT_UI, size: 12 } } }
+      },
       scales: {
-        x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(255,255,255,0.05)" } },
-        y: { ticks: { color: "#94a3b8", callback: v => v.toLocaleString("cs-CZ") + " CZK" }, grid: { color: "rgba(255,255,255,0.05)" }, beginAtZero: true }
+        x: { ticks: { color: TICK_COLOR, font: { family: FONT_UI } }, grid: { color: GRID_COLOR } },
+        y: {
+          ticks: {
+            color: TICK_COLOR,
+            font: { family: FONT_MONO, size: 11 },
+            callback: v => v.toLocaleString("cs-CZ") + " CZK"
+          },
+          grid: { color: GRID_COLOR },
+          beginAtZero: true
+        }
       }
     }
   });
@@ -99,11 +122,15 @@
     const expCtx = document.getElementById("expensePieChart").getContext("2d");
     new Chart(expCtx, {
       type: "doughnut",
-      data: { labels: expLabels, datasets: [{ data: expValues, backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: "#1e293b" }] },
+      data: {
+        labels: expLabels,
+        datasets: [{ data: expValues, backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: SURFACE_COLOR }]
+      },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom", labels: { color: "#cbd5e1", font: { family: "Inter" }, padding: 12 } },
+          legend: { position: "bottom", labels: { color: LEGEND_COLOR, font: { family: FONT_UI, size: 11 }, padding: 14 } },
           tooltip: { callbacks: { label: c => " " + c.parsed.toLocaleString("cs-CZ") + " CZK" } }
         }
       }
@@ -116,15 +143,20 @@
     const incCtx = document.getElementById("incomePieChart").getContext("2d");
     new Chart(incCtx, {
       type: "doughnut",
-      data: { labels: incLabels, datasets: [{ data: incValues, backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: "#1e293b" }] },
+      data: {
+        labels: incLabels,
+        datasets: [{ data: incValues, backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: SURFACE_COLOR }]
+      },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom", labels: { color: "#cbd5e1", font: { family: "Inter" }, padding: 12 } },
+          legend: { position: "bottom", labels: { color: LEGEND_COLOR, font: { family: FONT_UI, size: 11 }, padding: 14 } },
           tooltip: { callbacks: { label: c => " " + c.parsed.toLocaleString("cs-CZ") + " CZK" } }
         }
       }
     });
   }
 </script>
+</div>
 {% endblock %}

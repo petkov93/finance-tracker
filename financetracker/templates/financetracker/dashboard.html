@@ -2,58 +2,69 @@
 {% block title %}Dashboard — Finance Tracker{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">Dashboard</h1>
-  <a href="{% url 'add_transaction' %}" class="btn btn-primary">+ Add Transaction</a>
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Overview</p>
+    <h1 class="page-title">Dashboard</h1>
+  </div>
+  <a href="{% url 'add_transaction' %}" class="btn btn-primary">+ Add transaction</a>
 </div>
 
-<div class="summary-grid">
-  <div class="summary-card balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
-    <div class="summary-label">Balance</div>
-    <div class="summary-value">{{ balance|floatformat:2 }} CZK</div>
-    <div class="summary-sub">income minus expenses</div>
+<div class="hero-stats animate-in animate-in-delay-1">
+  <div class="hero-balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
+    <span class="summary-label">Balance</span>
+    <span class="hero-amount">{{ balance|floatformat:2 }} <small>CZK</small></span>
+    <span class="summary-sub">income minus expenses</span>
   </div>
-  <div class="summary-card income">
-    <div class="summary-label">Total Income</div>
-    <div class="summary-value">{{ total_income|floatformat:2 }} CZK</div>
-    <div class="summary-sub">all time</div>
-  </div>
-  <div class="summary-card expense">
-    <div class="summary-label">Total Expenses</div>
-    <div class="summary-value">{{ total_expense|floatformat:2 }} CZK</div>
-    <div class="summary-sub">all time</div>
+  <div class="hero-secondary">
+    <div class="stat-pill income">
+      <span class="summary-label">Income</span>
+      <span class="stat-pill-value">{{ total_income|floatformat:2 }}</span>
+      <span class="summary-sub">all time</span>
+    </div>
+    <div class="stat-pill expense">
+      <span class="summary-label">Expenses</span>
+      <span class="stat-pill-value">{{ total_expense|floatformat:2 }}</span>
+      <span class="summary-sub">all time</span>
+    </div>
   </div>
 </div>
 
-<section class="section">
+<section class="section animate-in animate-in-delay-2">
   <div class="section-header">
-    <h2 class="section-title">Transactions
-        {% if selected_category or q_query %}
-            <span class="link-muted" style="font-size: 0.9em; margin-left: 10px;">(Filtered)</span>
-        {% endif %}
+    <h2 class="section-title">
+      Transactions
+      {% if selected_category or q_query %}
+        <span class="badge badge-muted">Filtered</span>
+      {% endif %}
     </h2>
     <a href="{% url 'statistics' %}" class="link-muted">View statistics →</a>
   </div>
 
-  <form method="get" class="transaction-filter-form">
-    <div class="form-group">
-        <label for="category-select" class="form-label">Filter by Category</label>
-        <select name="category" id="category-select" class="form-select">
-            <option value="">All Categories</option>
+  <details class="filter-panel" {% if selected_category or q_query %}open{% endif %}>
+    <summary class="filter-panel-toggle">Refine list</summary>
+    <form method="get" class="filter-panel-body">
+      <div class="filter-grid">
+        <div class="form-group">
+          <label for="category-select" class="form-label">Category</label>
+          <select name="category" id="category-select" class="form-select">
+            <option value="">All categories</option>
             {% for category in all_categories %}
-                <option value="{{ category.id }}" {% if category.id|stringformat:"x" == selected_category %}selected{% endif %}>{{ category.name }}</option>
+              <option value="{{ category.id }}" {% if category.id|stringformat:"x" == selected_category %}selected{% endif %}>{{ category.name }}</option>
             {% endfor %}
-        </select>
-    </div>
-    <div class="form-group">
-        <label for="q-input" class="form-label">Search</label>
-        <input type="text" name="q" id="q-input" class="form-control" value="{{ q_query }}" placeholder="Search description or category...">
-    </div>
-    <div class="form-actions">
-        <button type="submit" class="btn btn-primary btn-sm">Apply Filters</button>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="q-input" class="form-label">Search</label>
+          <input type="text" name="q" id="q-input" class="form-control" value="{{ q_query }}" placeholder="Description or category…" />
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary btn-sm">Apply</button>
         <a href="{% url 'dashboard' %}" class="btn btn-ghost btn-sm">Reset</a>
-    </div>
-  </form>
+      </div>
+    </form>
+  </details>
 
   {% if transactions %}
     <div class="transaction-list">
@@ -67,17 +78,17 @@
               <div class="transaction-desc">{{ t.description|default:"No description" }}</div>
               <div class="transaction-meta">
                 {{ t.date|date:"d.m.Y" }}
-                {% if t.category %}&nbsp;·&nbsp;<span class="badge">{{ t.category.name }}</span>{% endif %}
+                {% if t.category %}<span class="badge">{{ t.category.name }}</span>{% endif %}
               </div>
             </div>
           </div>
           <div class="transaction-right">
             <div class="transaction-amount {% if t.type == 'income' %}amount-income{% else %}amount-expense{% endif %}">
-              {% if t.type == 'income' %}+{% else %}-{% endif %}{{ t.amount|floatformat:2 }} CZK
+              {% if t.type == 'income' %}+{% else %}−{% endif %}{{ t.amount|floatformat:2 }} CZK
             </div>
             <div class="transaction-actions">
               <a href="{% url 'edit_transaction' t.pk %}" class="action-link edit">Edit</a>
-              <form method="post" action="{% url 'delete_transaction' t.pk %}" style="display:inline" onsubmit="return confirm('Delete this transaction?')">
+              <form method="post" action="{% url 'delete_transaction' t.pk %}" class="inline-form" onsubmit="return confirm('Delete this transaction?')">
                 {% csrf_token %}
                 <button type="submit" class="action-link delete">Delete</button>
               </form>
@@ -88,7 +99,13 @@
     </div>
   {% else %}
     <div class="empty-state">
-      <div class="empty-icon">📊</div>
+      <svg class="empty-illustration" width="80" height="80" viewBox="0 0 80 80" fill="none" aria-hidden="true">
+        <rect x="12" y="16" width="56" height="48" rx="4" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="20" y1="28" x2="60" y2="28" stroke="currentColor" stroke-width="1.25"/>
+        <line x1="20" y1="38" x2="48" y2="38" stroke="currentColor" stroke-width="1.25"/>
+        <line x1="20" y1="48" x2="52" y2="48" stroke="currentColor" stroke-width="1.25"/>
+        <path d="M52 56 L58 62 L68 48" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
       <p class="empty-title">No transactions yet</p>
       <p class="empty-sub">Start by adding your first income or expense.</p>
       <a href="{% url 'add_transaction' %}" class="btn btn-primary">Add your first transaction</a>

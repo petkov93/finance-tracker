@@ -2,35 +2,50 @@
 {% block title %}Log In — Finance Tracker{% endblock %}
 
 {% block content %}
-<div class="auth-wrapper">
-  <div class="auth-card">
-    <div class="auth-header">
-      <span class="auth-icon">💰</span>
-      <h1 class="auth-title">Welcome back</h1>
-      <p class="auth-sub">Log in to your Finance Tracker</p>
+<div class="auth-layout">
+  <aside class="auth-panel" aria-hidden="true">
+    <div class="auth-panel-inner">
+      <svg class="auth-panel-graphic" width="120" height="120" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+        <rect x="20" y="24" width="80" height="72" rx="6" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="32" y1="44" x2="88" y2="44" stroke="currentColor" stroke-width="1.25" opacity="0.7"/>
+        <line x1="32" y1="58" x2="72" y2="58" stroke="currentColor" stroke-width="1.25" opacity="0.7"/>
+        <line x1="32" y1="72" x2="80" y2="72" stroke="currentColor" stroke-width="1.25" opacity="0.7"/>
+        <line x1="32" y1="86" x2="64" y2="86" stroke="currentColor" stroke-width="1.25" opacity="0.5"/>
+      </svg>
+      <h2 class="auth-panel-title">Know where every koruna goes.</h2>
+      <p class="auth-panel-text">Your personal ledger for income, spending, and investments — all in CZK.</p>
     </div>
+  </aside>
 
-    <form method="post" novalidate>
-      {% csrf_token %}
-      <div class="form-group">
-        <label class="form-label" for="{{ form.username.id_for_label }}">Username</label>
-        <input type="text" name="username" id="{{ form.username.id_for_label }}"
-               class="form-control" placeholder="Your username" autofocus
-               value="{{ form.username.value|default:'' }}" />
-        {% if form.username.errors %}<div class="form-error">{{ form.username.errors.0 }}</div>{% endif %}
+  <div class="auth-form-wrap">
+    <div class="auth-card animate-in">
+      <div class="auth-header">
+        <h1 class="auth-title">Welcome back</h1>
+        <p class="auth-sub">Log in to Finance Tracker</p>
       </div>
-      <div class="form-group">
-        <label class="form-label" for="{{ form.password.id_for_label }}">Password</label>
-        <input type="password" name="password" id="{{ form.password.id_for_label }}"
-               class="form-control" placeholder="Your password" />
-        {% if form.password.errors %}<div class="form-error">{{ form.password.errors.0 }}</div>{% endif %}
-      </div>
-      <button type="submit" class="btn btn-primary btn-full">Log in</button>
-    </form>
 
-    <p class="auth-footer">
-      Don't have an account? <a href="{% url 'register' %}" class="auth-link">Sign up</a>
-    </p>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="form-group">
+          <label class="form-label" for="{{ form.username.id_for_label }}">Username</label>
+          <input type="text" name="username" id="{{ form.username.id_for_label }}"
+                 class="form-control" placeholder="Your username" autofocus
+                 value="{{ form.username.value|default:'' }}" />
+          {% if form.username.errors %}<div class="form-error">{{ form.username.errors.0 }}</div>{% endif %}
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ form.password.id_for_label }}">Password</label>
+          <input type="password" name="password" id="{{ form.password.id_for_label }}"
+                 class="form-control" placeholder="Your password" />
+          {% if form.password.errors %}<div class="form-error">{{ form.password.errors.0 }}</div>{% endif %}
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Log in</button>
+      </form>
+
+      <p class="auth-footer">
+        Don't have an account? <a href="{% url 'register' %}" class="auth-link">Sign up</a>
+      </p>
+    </div>
   </div>
 </div>
 {% endblock %}

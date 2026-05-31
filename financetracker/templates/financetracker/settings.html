@@ -2,73 +2,78 @@
 {% block title %}Settings — Finance Tracker{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">Settings</h1>
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Account</p>
+    <h1 class="page-title">Settings</h1>
+  </div>
 </div>
 
-<section class="settings-section">
-  <div class="form-card">
-    <h2 class="settings-section-title">Account details</h2>
-    <form method="post" novalidate>
-      {% csrf_token %}
-      <input type="hidden" name="action" value="profile" />
+<div class="settings-grid animate-in animate-in-delay-1">
+  <section class="settings-section">
+    <div class="form-card">
+      <h2 class="settings-section-title">Account details</h2>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="profile" />
 
-      <div class="form-group">
-        <label class="form-label" for="{{ profile_form.username.id_for_label }}">Username</label>
-        {{ profile_form.username }}
-        {% if profile_form.username.errors %}<div class="form-error">{{ profile_form.username.errors.0 }}</div>{% endif %}
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ profile_form.username.id_for_label }}">Username</label>
+          {{ profile_form.username }}
+          {% if profile_form.username.errors %}<div class="form-error">{{ profile_form.username.errors.0 }}</div>{% endif %}
+        </div>
 
-      <div class="form-group">
-        <label class="form-label" for="{{ profile_form.email.id_for_label }}">Email <span class="form-hint">(optional)</span></label>
-        {{ profile_form.email }}
-        {% if profile_form.email.errors %}<div class="form-error">{{ profile_form.email.errors.0 }}</div>{% endif %}
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ profile_form.email.id_for_label }}">Email <span class="form-hint-inline">(optional)</span></label>
+          {{ profile_form.email }}
+          {% if profile_form.email.errors %}<div class="form-error">{{ profile_form.email.errors.0 }}</div>{% endif %}
+        </div>
 
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Save changes</button>
-      </div>
-    </form>
-  </div>
-</section>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </section>
 
-<section class="settings-section">
-  <div class="form-card">
-    <h2 class="settings-section-title">Change password</h2>
-    <form method="post" novalidate>
-      {% csrf_token %}
-      <input type="hidden" name="action" value="password" />
+  <section class="settings-section">
+    <div class="form-card">
+      <h2 class="settings-section-title">Change password</h2>
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="password" />
 
-      <div class="form-group">
-        <label class="form-label" for="{{ password_form.old_password.id_for_label }}">Current password</label>
-        {{ password_form.old_password }}
-        {% if password_form.old_password.errors %}<div class="form-error">{{ password_form.old_password.errors.0 }}</div>{% endif %}
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ password_form.old_password.id_for_label }}">Current password</label>
+          {{ password_form.old_password }}
+          {% if password_form.old_password.errors %}<div class="form-error">{{ password_form.old_password.errors.0 }}</div>{% endif %}
+        </div>
 
-      <div class="form-group">
-        <label class="form-label" for="{{ password_form.new_password1.id_for_label }}">New password</label>
-        {{ password_form.new_password1 }}
-        {% if password_form.new_password1.errors %}<div class="form-error">{{ password_form.new_password1.errors.0 }}</div>{% endif %}
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ password_form.new_password1.id_for_label }}">New password</label>
+          {{ password_form.new_password1 }}
+          {% if password_form.new_password1.errors %}<div class="form-error">{{ password_form.new_password1.errors.0 }}</div>{% endif %}
+        </div>
 
-      <div class="form-group">
-        <label class="form-label" for="{{ password_form.new_password2.id_for_label }}">Confirm new password</label>
-        {{ password_form.new_password2 }}
-        {% if password_form.new_password2.errors %}<div class="form-error">{{ password_form.new_password2.errors.0 }}</div>{% endif %}
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ password_form.new_password2.id_for_label }}">Confirm new password</label>
+          {{ password_form.new_password2 }}
+          {% if password_form.new_password2.errors %}<div class="form-error">{{ password_form.new_password2.errors.0 }}</div>{% endif %}
+        </div>
 
-      {% if password_form.non_field_errors %}
-        <div class="form-error">{{ password_form.non_field_errors.0 }}</div>
-      {% endif %}
+        {% if password_form.non_field_errors %}
+          <div class="form-error">{{ password_form.non_field_errors.0 }}</div>
+        {% endif %}
 
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Change password</button>
-      </div>
-    </form>
-  </div>
-</section>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Change password</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
 
-<section class="settings-section danger-zone">
+<section class="settings-section danger-zone animate-in animate-in-delay-2">
   <div class="form-card">
     <h2 class="settings-section-title">Data management</h2>
     <p class="settings-section-desc">Permanently delete all of your entries. This cannot be undone.</p>

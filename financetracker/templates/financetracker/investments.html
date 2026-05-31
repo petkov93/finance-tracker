@@ -2,32 +2,37 @@
 {% block title %}Investments — Finance Tracker{% endblock %}
 
 {% block content %}
-<div class="page-header">
-  <h1 class="page-title">Investments</h1>
-  <a href="{% url 'add_investment' %}" class="btn btn-primary">+ Add Entry</a>
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Portfolio</p>
+    <h1 class="page-title">Investments</h1>
+  </div>
+  <a href="{% url 'add_investment' %}" class="btn btn-primary">+ Add entry</a>
 </div>
 
-<div class="summary-grid">
-  <div class="summary-card balance {% if portfolio_value >= 0 %}positive{% else %}negative{% endif %}">
-    <div class="summary-label">Portfolio Value</div>
-    <div class="summary-value">{{ portfolio_value|floatformat:2 }} CZK</div>
-    <div class="summary-sub">profit − invested</div>
+<div class="hero-stats animate-in animate-in-delay-1">
+  <div class="hero-balance {% if portfolio_value >= 0 %}positive{% else %}negative{% endif %}">
+    <span class="summary-label">Portfolio value</span>
+    <span class="hero-amount">{{ portfolio_value|floatformat:2 }} <small>CZK</small></span>
+    <span class="summary-sub">profit − invested</span>
   </div>
-  <div class="summary-card invested">
-    <div class="summary-label">Total Invested</div>
-    <div class="summary-value">{{ total_invested|floatformat:2 }} CZK</div>
-    <div class="summary-sub">{{ invested_count }} entries</div>
-  </div>
-  <div class="summary-card income">
-    <div class="summary-label">Total Profit</div>
-    <div class="summary-value">{{ total_profit|floatformat:2 }} CZK</div>
-    <div class="summary-sub">{{ profit_count }} entries</div>
+  <div class="hero-secondary">
+    <div class="stat-pill invested">
+      <span class="summary-label">Invested</span>
+      <span class="stat-pill-value">{{ total_invested|floatformat:2 }}</span>
+      <span class="summary-sub">{{ invested_count }} entries</span>
+    </div>
+    <div class="stat-pill income">
+      <span class="summary-label">Profit</span>
+      <span class="stat-pill-value">{{ total_profit|floatformat:2 }}</span>
+      <span class="summary-sub">{{ profit_count }} entries</span>
+    </div>
   </div>
 </div>
 
-<section class="section">
+<section class="section animate-in animate-in-delay-2">
   <div class="section-header">
-    <h2 class="section-title">Recent Entries</h2>
+    <h2 class="section-title">Recent entries</h2>
     <span class="link-muted">{{ entry_count }} total</span>
   </div>
 
@@ -37,13 +42,12 @@
         <div class="transaction-row">
           <div class="transaction-left">
             <div class="transaction-icon {% if e.type == 'profit' %}icon-income{% else %}icon-invested{% endif %}">
-              {% if e.type == 'profit' %}📈{% else %}💼{% endif %}
+              {% if e.type == 'profit' %}↑{% else %}◆{% endif %}
             </div>
             <div class="transaction-info">
               <div class="transaction-desc">{{ e.description|default:"No description" }}</div>
               <div class="transaction-meta">
                 {{ e.date|date:"d.m.Y" }}
-                &nbsp;·&nbsp;
                 <span class="badge">{% if e.type == 'profit' %}Profit{% else %}Invested{% endif %}</span>
               </div>
             </div>
@@ -54,7 +58,7 @@
             </div>
             <div class="transaction-actions">
               <a href="{% url 'edit_investment' e.pk %}" class="action-link edit">Edit</a>
-              <form method="post" action="{% url 'delete_investment' e.pk %}" style="display:inline" onsubmit="return confirm('Delete this entry?')">
+              <form method="post" action="{% url 'delete_investment' e.pk %}" class="inline-form" onsubmit="return confirm('Delete this entry?')">
                 {% csrf_token %}
                 <button type="submit" class="action-link delete">Delete</button>
               </form>
@@ -65,7 +69,11 @@
     </div>
   {% else %}
     <div class="empty-state">
-      <div class="empty-icon">📈</div>
+      <svg class="empty-illustration" width="80" height="80" viewBox="0 0 80 80" fill="none" aria-hidden="true">
+        <polyline points="16,56 32,40 44,48 64,24" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="16" y1="64" x2="64" y2="64" stroke="currentColor" stroke-width="1.25" opacity="0.5"/>
+        <circle cx="64" cy="24" r="3" fill="currentColor"/>
+      </svg>
       <p class="empty-title">No investment entries yet</p>
       <p class="empty-sub">Track how much you've invested and your profits in CZK.</p>
       <a href="{% url 'add_investment' %}" class="btn btn-primary">Add your first entry</a>
