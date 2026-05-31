@@ -18,21 +18,22 @@
     <div class="topbar-start">
       {% if user.is_authenticated %}
       <button type="button" class="sidebar-toggle" aria-expanded="true" aria-controls="sidebar-nav" aria-label="Toggle navigation">
-        <svg class="icon-menu" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <!-- <svg class="icon-menu" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
         </svg>
         <svg class="icon-close" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
-      {% endif %}
-      <a href="{% if user.is_authenticated %}{% url 'dashboard' %}{% else %}{% url 'login' %}{% endif %}" class="brand">
+        </svg> -->
         <svg class="brand-mark" width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
           <rect x="1" y="1" width="26" height="26" rx="4" stroke="currentColor" stroke-width="1.5"/>
           <line x1="6" y1="9" x2="22" y2="9" stroke="currentColor" stroke-width="1.25"/>
           <line x1="6" y1="14" x2="18" y2="14" stroke="currentColor" stroke-width="1.25"/>
           <line x1="6" y1="19" x2="20" y2="19" stroke="currentColor" stroke-width="1.25"/>
         </svg>
+      </button>
+      {% endif %}
+      <a href="{% if user.is_authenticated %}{% url 'dashboard' %}{% else %}{% url 'login' %}{% endif %}" class="brand">
+        
         <span class="brand-name">Finance Tracker</span>
       </a>
     </div>
