@@ -239,7 +239,7 @@ body.sidebar-collapsed .sidebar-label {
 }
 
 body.sidebar-collapsed .sidebar-link {
-  justify-content: center;
+  /* justify-content: center; */
   padding-left: 0.65rem;
   padding-right: 0.65rem;
 }
@@ -437,8 +437,8 @@ body.sidebar-collapsed .sidebar-link.active::before {
   box-shadow: var(--shadow-lg);
 }
 
-.hero-balance.positive { border-left: 4px solid var(--income); }
-.hero-balance.negative { border-left: 4px solid var(--expense); }
+.hero-balance.positive { border-top: 4px solid var(--income); }
+.hero-balance.negative { border-top: 4px solid var(--expense); }
 
 .hero-amount {
   font-family: var(--font-mono);
