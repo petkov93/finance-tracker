@@ -11,7 +11,7 @@
   <div class="summary-card balance {% if portfolio_value >= 0 %}positive{% else %}negative{% endif %}">
     <div class="summary-label">Portfolio Value</div>
     <div class="summary-value">{{ portfolio_value|floatformat:2 }} CZK</div>
-    <div class="summary-sub">invested + profit</div>
+    <div class="summary-sub">profit − invested</div>
   </div>
   <div class="summary-card invested">
     <div class="summary-label">Total Invested</div>

@@ -1,0 +1,16 @@
+[run]
+source = financetracker
+omit =
+    */migrations/*
+    */tests/*
+    manage.py
+    config/wsgi.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+show_missing = True
+precision = 0
+
+[html]
+directory = htmlcov

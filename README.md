@@ -25,7 +25,7 @@ A personal finance web app for tracking income, expenses, and investments in **C
 
 ### Investments
 - Separate view for **invested** vs **profit** amounts (CZK)
-- Portfolio value (invested + profit)
+- Portfolio value (**profit − invested**) — net gain or loss relative to capital put in
 - Same list/edit/delete flow as transactions
 
 ### Accounts
@@ -210,6 +210,41 @@ python manage.py collectstatic --noinput
 python manage.py createsuperuser
 python manage.py runserver
 python manage.py check --deploy   # production settings check
+```
+
+### Tests
+
+Tests use an in-memory SQLite database (no Supabase required):
+
+```bash
+python manage.py test --settings=config.settings_test
+```
+
+**Windows:** `.\test.ps1`  
+**Linux / macOS:** `bash test.sh`
+
+Install dev dependencies first for coverage (see below):
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Coverage
+
+Run tests with coverage measurement and a terminal report:
+
+```bash
+coverage run manage.py test --settings=config.settings_test
+coverage report
+```
+
+**Windows:** `.\cover.ps1`  
+**Linux / macOS:** `bash cover.sh`
+
+Optional HTML report (open `htmlcov/index.html` in a browser):
+
+```bash
+coverage html
 ```
 
 ---
