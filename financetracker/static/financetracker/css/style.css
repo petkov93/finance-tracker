@@ -1213,18 +1213,6 @@ body.sidebar-collapsed .sidebar-link.active::before {
     align-items: flex-start;
   }
 
-  .transaction-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .transaction-right {
-    align-items: flex-start;
-    width: 100%;
-    flex-direction: row;
-    justify-content: space-between;
-  }
-
   .chart-card-header {
     flex-direction: column;
     align-items: stretch;
@@ -1245,5 +1233,4 @@ body.sidebar-collapsed .sidebar-link.active::before {
   .main-content { padding: 1.25rem 1rem; }
   .topbar { padding: 0 1rem; }
   .brand-name { font-size: 1rem; }
-  .topbar-user { display: none; }
 }
