@@ -14,6 +14,7 @@ urlpatterns = [
     path("investments/add/", views.add_investment, name="add_investment"),
     path("investments/edit/<int:pk>/", views.edit_investment, name="edit_investment"),
     path("investments/delete/<int:pk>/", views.delete_investment, name="delete_investment"),
+    path("converter/", views.currency_converter, name="currency_converter"),
     path("settings/", views.settings_view, name="settings"),
     path("settings/clear-transactions/", views.clear_all_transactions, name="clear_all_transactions"),
     path("settings/clear-investments/", views.clear_all_investments, name="clear_all_investments"),

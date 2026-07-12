@@ -56,3 +56,43 @@ class InvestmentEntryForm(forms.ModelForm):
             "description": forms.TextInput(attrs={"class": "form-control", "placeholder": "Optional note..."}),
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
         }
+
+
+class CurrencyConverterForm(forms.Form):
+    amount = forms.DecimalField(
+        required=False,
+        max_digits=12,
+        decimal_places=2,
+        widget=forms.NumberInput(
+            attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "min": "0.01",
+                "placeholder": "0.00",
+                "id": "converter-amount",
+            }
+        ),
+    )
+    from_currency = forms.ChoiceField(
+        widget=forms.Select(attrs={"class": "form-select", "id": "converter-from"}),
+    )
+    to_currency = forms.ChoiceField(
+        widget=forms.Select(attrs={"class": "form-select", "id": "converter-to"}),
+    )
+
+    def __init__(self, *args, currency_choices=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = currency_choices or []
+        self.fields["from_currency"].choices = choices
+        self.fields["to_currency"].choices = choices
+
+    def clean_amount(self):
+        raw = self.data.get("amount", "")
+        if raw == "":
+            raise forms.ValidationError("Enter an amount to convert.")
+        amount = self.cleaned_data.get("amount")
+        if amount is None:
+            return amount
+        if amount <= 0:
+            raise forms.ValidationError("Amount must be greater than zero.")
+        return amount

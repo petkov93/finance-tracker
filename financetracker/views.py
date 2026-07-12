@@ -13,10 +13,17 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .models import Transaction, Category, InvestmentEntry
 from .forms import (
+    CurrencyConverterForm,
     CustomPasswordChangeForm,
     InvestmentEntryForm,
     ProfileForm,
     TransactionForm,
+)
+from .services.currency import (
+    CurrencyConversionError,
+    convert,
+    get_rate,
+    get_supported_currencies,
 )
 
 
@@ -353,3 +360,148 @@ def clear_all_investments(request):
     InvestmentEntry.objects.filter(user=request.user).delete()
     messages.success(request, f"Deleted all {count} investment entr{'y' if count == 1 else 'ies'}.")
     return redirect("settings")
+
+
+DEFAULT_FROM_CURRENCY = "CZK"
+DEFAULT_TO_CURRENCY = "EUR"
+SESSION_FROM_KEY = "converter_from_currency"
+SESSION_TO_KEY = "converter_to_currency"
+
+
+def _currency_choices(supported):
+    return sorted(
+        (code, f"{code} — {name}") for code, name in supported.items()
+    )
+
+
+def _resolve_currency(code, supported, session_value, default):
+    if code:
+        normalized = code.upper()
+        if normalized in supported:
+            return normalized
+    if session_value and session_value in supported:
+        return session_value
+    return default
+
+
+def _resolve_conversion_pair(request, supported, url_from=None, url_to=None):
+    session_from = request.session.get(SESSION_FROM_KEY)
+    session_to = request.session.get(SESSION_TO_KEY)
+    from_currency = _resolve_currency(
+        url_from,
+        supported,
+        session_from,
+        DEFAULT_FROM_CURRENCY,
+    )
+    to_currency = _resolve_currency(
+        url_to,
+        supported,
+        session_to,
+        DEFAULT_TO_CURRENCY,
+    )
+    return from_currency, to_currency
+
+
+def _quantize_money(value):
+    return value.quantize(Decimal("0.01"))
+
+
+@login_required
+def currency_converter(request):
+    try:
+        supported = get_supported_currencies()
+    except CurrencyConversionError:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/converter.html",
+            {
+                "form": None,
+                "rate_error": True,
+                "convert_error": False,
+            },
+            status=200,
+        )
+
+    choices = _currency_choices(supported)
+    url_from = request.GET.get("from") or None
+    url_to = request.GET.get("to") or None
+    amount_query = request.GET.get("amount", "")
+
+    from_currency, to_currency = _resolve_conversion_pair(
+        request,
+        supported,
+        url_from=url_from,
+        url_to=url_to,
+    )
+
+    rate = None
+    rate_error = False
+    converted_amount = None
+    convert_error = False
+
+    try:
+        rate = get_rate(from_currency, to_currency)
+    except CurrencyConversionError:
+        rate_error = True
+
+    if request.method == "POST":
+        form = CurrencyConverterForm(request.POST, currency_choices=choices)
+        if form.is_valid():
+            amount = form.cleaned_data["amount"]
+            post_from = form.cleaned_data["from_currency"]
+            post_to = form.cleaned_data["to_currency"]
+            from_currency, to_currency = _resolve_conversion_pair(
+                request,
+                supported,
+                url_from=post_from,
+                url_to=post_to,
+            )
+            form = CurrencyConverterForm(
+                initial={
+                    "amount": amount,
+                    "from_currency": from_currency,
+                    "to_currency": to_currency,
+                },
+                currency_choices=choices,
+            )
+            try:
+                rate = get_rate(from_currency, to_currency)
+                rate_error = False
+                result = convert(amount, from_currency, to_currency)
+                converted_amount = _quantize_money(result)
+                request.session[SESSION_FROM_KEY] = from_currency
+                request.session[SESSION_TO_KEY] = to_currency
+            except CurrencyConversionError:
+                convert_error = True
+                try:
+                    rate = get_rate(from_currency, to_currency)
+                    rate_error = False
+                except CurrencyConversionError:
+                    rate = None
+                    rate_error = True
+    else:
+        initial = {
+            "from_currency": from_currency,
+            "to_currency": to_currency,
+        }
+        if amount_query:
+            initial["amount"] = amount_query
+        form = CurrencyConverterForm(initial=initial, currency_choices=choices)
+
+    return render(
+        request,
+        "financetracker/converter.html",
+        {
+            "form": form,
+            "from_currency": from_currency,
+            "to_currency": to_currency,
+            "rate": rate,
+            "rate_error": rate_error,
+            "convert_error": convert_error,
+            "converted_amount": converted_amount,
+        },
+    )

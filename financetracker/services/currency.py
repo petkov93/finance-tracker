@@ -6,6 +6,8 @@ from django.core.cache import cache
 FRANKFURTER_API_BASE = "https://api.frankfurter.dev"
 REQUEST_TIMEOUT_SECONDS = 5
 RATE_CACHE_TTL_SECONDS = 12 * 60 * 60
+SUPPORTED_CURRENCIES_CACHE_KEY = "currency_supported_currencies"
+SUPPORTED_CURRENCIES_CACHE_TTL_SECONDS = 24 * 60 * 60
 
 
 class CurrencyConversionError(Exception):
@@ -67,3 +69,30 @@ def convert(amount: Decimal, from_currency: str, to_currency: str) -> Decimal:
         raise ValueError("amount must be positive")
 
     return amount * get_rate(from_currency, to_currency)
+
+
+def get_supported_currencies() -> dict[str, str]:
+    cached = cache.get(SUPPORTED_CURRENCIES_CACHE_KEY)
+    if cached is not None:
+        return dict(cached)
+
+    url = f"{FRANKFURTER_API_BASE}/v2/currencies"
+    try:
+        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as exc:
+        raise CurrencyConversionError("Failed to fetch supported currencies") from exc
+    except ValueError as exc:
+        raise CurrencyConversionError("Invalid JSON in currencies response") from exc
+
+    if not isinstance(data, dict) or not data:
+        raise CurrencyConversionError("Missing currencies in response")
+
+    currencies = {str(code).upper(): str(name) for code, name in data.items()}
+    cache.set(
+        SUPPORTED_CURRENCIES_CACHE_KEY,
+        currencies,
+        SUPPORTED_CURRENCIES_CACHE_TTL_SECONDS,
+    )
+    return currencies

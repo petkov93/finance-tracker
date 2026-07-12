@@ -5,7 +5,12 @@ import requests
 from django.core.cache import cache
 from django.test import TestCase
 
-from financetracker.services.currency import CurrencyConversionError, convert, get_rate
+from financetracker.services.currency import (
+    CurrencyConversionError,
+    convert,
+    get_rate,
+    get_supported_currencies,
+)
 
 
 class CurrencyServiceTests(TestCase):
@@ -84,3 +89,33 @@ class CurrencyServiceTests(TestCase):
             convert(Decimal("0"), "EUR", "CZK")
 
         mock_get.assert_not_called()
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_get_supported_currencies_returns_code_name_mapping(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"EUR": "Euro", "CZK": "Czech Koruna"}
+        mock_get.return_value = mock_response
+
+        result = get_supported_currencies()
+
+        self.assertEqual(result, {"EUR": "Euro", "CZK": "Czech Koruna"})
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_supported_currencies_cache_hit_avoids_second_http_request(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"EUR": "Euro"}
+        mock_get.return_value = mock_response
+
+        get_supported_currencies()
+        get_supported_currencies()
+
+        mock_get.assert_called_once()
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_supported_currencies_api_failure_raises_currency_conversion_error(self, mock_get):
+        mock_get.side_effect = requests.RequestException("network down")
+
+        with self.assertRaises(CurrencyConversionError):
+            get_supported_currencies()
