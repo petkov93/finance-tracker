@@ -9,5 +9,5 @@ else
   python="python"
 fi
 
-"$python" -m coverage run manage.py test --settings=config.settings_test "$@"
+"$python" -m coverage run manage.py test "$@"
 "$python" -m coverage report

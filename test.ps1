@@ -8,4 +8,4 @@ if (Test-Path ".\.venv\Scripts\python.exe") {
     $python = "python"
 }
 
-& $python manage.py test --settings=config.settings_test @args
+& $python manage.py test @args

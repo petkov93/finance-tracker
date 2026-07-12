@@ -4,7 +4,7 @@ import requests
 from django.core.cache import cache
 
 FRANKFURTER_API_BASE = "https://api.frankfurter.dev"
-REQUEST_TIMEOUT_SECONDS = 5
+REQUEST_TIMEOUT_SECONDS = 10
 RATE_CACHE_TTL_SECONDS = 12 * 60 * 60
 SUPPORTED_CURRENCIES_CACHE_KEY = "currency_supported_currencies"
 SUPPORTED_CURRENCIES_CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -86,13 +86,14 @@ def get_supported_currencies() -> dict[str, str]:
     except ValueError as exc:
         raise CurrencyConversionError("Invalid JSON in currencies response") from exc
 
-    if not isinstance(data, dict) or not data:
+    if not isinstance(data, list) or not data:
         raise CurrencyConversionError("Missing currencies in response")
 
-    currencies = {str(code).upper(): str(name) for code, name in data.items()}
+    currencies = {currency['iso_code'].upper(): currency['name'] for currency in data}
+
     cache.set(
         SUPPORTED_CURRENCIES_CACHE_KEY,
         currencies,
-        SUPPORTED_CURRENCIES_CACHE_TTL_SECONDS,
+        SUPPORTED_CURRENCIES_CACHE_TTL_SECONDS
     )
     return currencies

@@ -370,7 +370,8 @@ SESSION_TO_KEY = "converter_to_currency"
 
 def _currency_choices(supported):
     return sorted(
-        (code, f"{code} — {name}") for code, name in supported.items()
+        ((code, f"{code} — {name}") for code, name in supported.items()),
+        key=lambda x: x[0],
     )
 
 

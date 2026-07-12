@@ -217,7 +217,7 @@ python manage.py check --deploy   # production settings check
 Tests use an in-memory SQLite database (no Supabase required):
 
 ```bash
-python manage.py test --settings=config.settings_test
+python manage.py test
 ```
 
 **Windows:** `.\test.ps1`  
@@ -234,7 +234,7 @@ pip install -r requirements-dev.txt
 Run tests with coverage measurement and a terminal report:
 
 ```bash
-coverage run manage.py test --settings=config.settings_test
+coverage run manage.py test
 coverage report
 ```
 

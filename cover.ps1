@@ -8,5 +8,5 @@ if (Test-Path ".\.venv\Scripts\python.exe") {
     $python = "python"
 }
 
-& $python -m coverage run manage.py test --settings=config.settings_test @args
+& $python -m coverage run manage.py test @args
 & $python -m coverage report

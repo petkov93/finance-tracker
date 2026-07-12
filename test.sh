@@ -9,4 +9,4 @@ else
   python="python"
 fi
 
-exec "$python" manage.py test --settings=config.settings_test "$@"
+exec "$python" manage.py test "$@"

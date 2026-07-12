@@ -94,7 +94,10 @@ class CurrencyServiceTests(TestCase):
     def test_get_supported_currencies_returns_code_name_mapping(self, mock_get):
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"EUR": "Euro", "CZK": "Czech Koruna"}
+        mock_response.json.return_value = [
+            {"iso_code": "EUR", "name": "Euro"},
+            {"iso_code": "CZK", "name": "Czech Koruna"},
+        ]
         mock_get.return_value = mock_response
 
         result = get_supported_currencies()
@@ -105,7 +108,7 @@ class CurrencyServiceTests(TestCase):
     def test_supported_currencies_cache_hit_avoids_second_http_request(self, mock_get):
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"EUR": "Euro"}
+        mock_response.json.return_value = [{"iso_code": "EUR", "name": "Euro"}]
         mock_get.return_value = mock_response
 
         get_supported_currencies()
