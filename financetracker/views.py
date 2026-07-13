@@ -8,9 +8,10 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.db.models import Q, Sum
 from django.db.models.functions import TruncMonth
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from .models import Transaction, Category, InvestmentEntry
 from .forms import (
     CurrencyConverterForm,
@@ -407,7 +408,120 @@ def _quantize_money(value):
     return value.quantize(Decimal("0.01"))
 
 
+def _quantize_rate(value):
+    return value.quantize(Decimal("0.0001"))
+
+
+def _rate_json(from_currency, to_currency, rate):
+    return {
+        "from": from_currency,
+        "to": to_currency,
+        "rate": format(_quantize_rate(rate), "f"),
+    }
+
+
+def _validate_api_currencies(from_currency, to_currency, supported):
+    from_code = (from_currency or "").upper()
+    to_code = (to_currency or "").upper()
+    if from_code not in supported or to_code not in supported:
+        return None, JsonResponse({"error": "Unsupported currency code."}, status=400)
+    return (from_code, to_code), None
+
+
+def _parse_convert_amount(raw_amount):
+    if raw_amount is None or raw_amount == "":
+        return None, JsonResponse({"error": "Enter an amount to convert."}, status=400)
+    try:
+        amount = Decimal(str(raw_amount))
+    except Exception:
+        return None, JsonResponse({"error": "Enter a valid amount."}, status=400)
+    if amount <= 0:
+        return None, JsonResponse({"error": "Amount must be greater than zero."}, status=400)
+    return amount, None
+
+
 @login_required
+@require_GET
+def converter_rate_api(request):
+    try:
+        supported = get_supported_currencies()
+    except CurrencyConversionError:
+        return JsonResponse(
+            {"error": "Couldn't load supported currencies right now."},
+            status=503,
+        )
+
+    pair, error_response = _validate_api_currencies(
+        request.GET.get("from"),
+        request.GET.get("to"),
+        supported,
+    )
+    if error_response:
+        return error_response
+    from_currency, to_currency = pair
+
+    try:
+        rate = get_rate(from_currency, to_currency)
+    except CurrencyConversionError:
+        return JsonResponse(
+            {"error": "Couldn't fetch the exchange rate right now."},
+            status=503,
+        )
+
+    return JsonResponse(_rate_json(from_currency, to_currency, rate))
+
+
+@login_required
+@require_POST
+def converter_convert_api(request):
+    try:
+        supported = get_supported_currencies()
+    except CurrencyConversionError:
+        return JsonResponse(
+            {"error": "Couldn't load supported currencies right now."},
+            status=503,
+        )
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+    if not isinstance(body, dict):
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+    pair, error_response = _validate_api_currencies(
+        body.get("from"),
+        body.get("to"),
+        supported,
+    )
+    if error_response:
+        return error_response
+    from_currency, to_currency = pair
+
+    amount, error_response = _parse_convert_amount(body.get("amount"))
+    if error_response:
+        return error_response
+
+    try:
+        rate = get_rate(from_currency, to_currency)
+        result = convert(amount, from_currency, to_currency)
+    except CurrencyConversionError:
+        return JsonResponse(
+            {"error": "Couldn't convert right now."},
+            status=503,
+        )
+
+    request.session[SESSION_FROM_KEY] = from_currency
+    request.session[SESSION_TO_KEY] = to_currency
+
+    payload = _rate_json(from_currency, to_currency, rate)
+    payload["converted_amount"] = format(_quantize_money(result), "f")
+    return JsonResponse(payload)
+
+
+@login_required
+@require_GET
 def currency_converter(request):
     try:
         supported = get_supported_currencies()
@@ -422,7 +536,6 @@ def currency_converter(request):
             {
                 "form": None,
                 "rate_error": True,
-                "convert_error": False,
             },
             status=200,
         )
@@ -441,57 +554,19 @@ def currency_converter(request):
 
     rate = None
     rate_error = False
-    converted_amount = None
-    convert_error = False
 
     try:
         rate = get_rate(from_currency, to_currency)
     except CurrencyConversionError:
         rate_error = True
 
-    if request.method == "POST":
-        form = CurrencyConverterForm(request.POST, currency_choices=choices)
-        if form.is_valid():
-            amount = form.cleaned_data["amount"]
-            post_from = form.cleaned_data["from_currency"]
-            post_to = form.cleaned_data["to_currency"]
-            from_currency, to_currency = _resolve_conversion_pair(
-                request,
-                supported,
-                url_from=post_from,
-                url_to=post_to,
-            )
-            form = CurrencyConverterForm(
-                initial={
-                    "amount": amount,
-                    "from_currency": from_currency,
-                    "to_currency": to_currency,
-                },
-                currency_choices=choices,
-            )
-            try:
-                rate = get_rate(from_currency, to_currency)
-                rate_error = False
-                result = convert(amount, from_currency, to_currency)
-                converted_amount = _quantize_money(result)
-                request.session[SESSION_FROM_KEY] = from_currency
-                request.session[SESSION_TO_KEY] = to_currency
-            except CurrencyConversionError:
-                convert_error = True
-                try:
-                    rate = get_rate(from_currency, to_currency)
-                    rate_error = False
-                except CurrencyConversionError:
-                    rate = None
-                    rate_error = True
-    else:
-        initial = {
-            "from_currency": from_currency,
-            "to_currency": to_currency,
-        }
-        if amount_query:
-            initial["amount"] = amount_query
-        form = CurrencyConverterForm(initial=initial, currency_choices=choices)
+    initial = {
+        "from_currency": from_currency,
+        "to_currency": to_currency,
+    }
+    if amount_query:
+        initial["amount"] = amount_query
+    form = CurrencyConverterForm(initial=initial, currency_choices=choices)
 
     return render(
         request,
@@ -502,7 +577,5 @@ def currency_converter(request):
             "to_currency": to_currency,
             "rate": rate,
             "rate_error": rate_error,
-            "convert_error": convert_error,
-            "converted_amount": converted_amount,
         },
     )

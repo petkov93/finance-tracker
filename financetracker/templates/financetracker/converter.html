@@ -1,73 +1,65 @@
-{% extends "financetracker/base.html" %}
-{% load static %}
-{% block title %}Currency Converter — Finance Tracker{% endblock %}
-
-{% block content %}
-<div class="page-content">
-<div class="page-header animate-in">
-  <div>
-    <p class="page-eyebrow">Tools</p>
-    <h1 class="page-title">Currency Converter</h1>
-  </div>
-</div>
-
-{% if form %}
-<div class="form-card animate-in animate-in-delay-1">
-  {% if rate and not rate_error %}
-  <p class="converter-rate" id="converter-rate-line">
-    1 {{ from_currency }} = {{ rate|floatformat:4 }} {{ to_currency }}
-  </p>
-  {% elif rate_error %}
-  <p class="form-error converter-rate-error" role="alert">
-    Couldn't fetch the exchange rate right now. Try again in a moment.
-  </p>
-  {% endif %}
-
-  {% if convert_error %}
-  <p class="form-error converter-rate-error" role="alert">
-    Couldn't convert right now. Try again in a moment.
-  </p>
-  {% endif %}
-
-  <form method="post" novalidate id="converter-form">
-    {% csrf_token %}
-
-    <div class="converter-pair">
-      <div class="form-group">
-        <label class="form-label" for="{{ form.from_currency.id_for_label }}">From</label>
-        {{ form.from_currency }}
-      </div>
-
-      <button type="button" class="btn btn-ghost converter-swap" id="converter-swap" aria-label="Swap currencies">
-        ⇄
-      </button>
-
-      <div class="form-group">
-        <label class="form-label" for="{{ form.to_currency.id_for_label }}">To</label>
-        {{ form.to_currency }}
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label" for="{{ form.amount.id_for_label }}">Amount</label>
-      {{ form.amount }}
-      {% if form.amount.errors %}<div class="form-error">{{ form.amount.errors.0 }}</div>{% endif %}
-    </div>
-
-    {% if converted_amount is not None %}
-    <div class="converter-result">
-      <span class="summary-label">Converted amount</span>
-      <span class="converter-result-value">{{ converted_amount|floatformat:2 }} {{ to_currency }}</span>
-    </div>
-    {% endif %}
-
-    <div class="form-actions">
-      <button type="submit" class="btn btn-primary">Convert</button>
-    </div>
-  </form>
-</div>
-{% endif %}
-</div>
-
-<script src="{% static 'financetracker/js/converter.js' %}"></script>
-{% endblock %}
+{% extends "financetracker/base.html" %}
+{% load static %}
+{% block title %}Currency Converter — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-content page-content--converter">
+<div class="page-header animate-in">
+  <div>
+    <h1 class="page-title">Currency Converter</h1>
+  </div>
+</div>
+
+{% if form %}
+<div class="form-card form-card--converter animate-in animate-in-delay-1">
+  <p class="converter-rate" id="converter-rate-line"{% if rate_error %} hidden{% endif %}>
+    1 {{ from_currency }} = {{ rate|floatformat:4 }} {{ to_currency }}
+  </p>
+  <p class="form-error converter-rate-error" id="converter-rate-error" role="alert"{% if not rate_error %} hidden{% endif %}>
+    Couldn't fetch the exchange rate right now. Try again in a moment.
+  </p>
+
+  <form novalidate id="converter-form"
+        data-rate-url="{% url 'converter_rate_api' %}"
+        data-convert-url="{% url 'converter_convert_api' %}">
+    {% csrf_token %}
+
+    <div class="converter-pair">
+      <div class="form-group">
+        <label class="form-label" for="{{ form.from_currency.id_for_label }}">From</label>
+        {{ form.from_currency }}
+      </div>
+
+      <button type="button" class="btn btn-ghost converter-swap" id="converter-swap" aria-label="Swap currencies">
+        ⇄
+      </button>
+
+      <div class="form-group">
+        <label class="form-label" for="{{ form.to_currency.id_for_label }}">To</label>
+        {{ form.to_currency }}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.amount.id_for_label }}">Amount</label>
+      {{ form.amount }}
+      <div class="form-error" id="converter-amount-error" role="alert" hidden></div>
+    </div>
+
+    <div class="converter-result">
+      <span class="summary-label">Converted amount</span>
+      <span class="converter-result-value converter-result-value--empty" id="converter-result-value" aria-live="polite">—</span>
+    </div>
+
+    <p class="form-error converter-convert-error" id="converter-convert-error" role="alert" hidden></p>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" id="converter-convert-btn">Convert</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+</div>
+
+<script src="{% static 'financetracker/js/converter.js' %}"></script>
+{% endblock %}
