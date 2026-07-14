@@ -1,8 +1,20 @@
 # Finance Tracker
 
-Personal finance tracking for day-to-day income, expenses, and investments, with amounts stored in CZK.
+Personal finance tracking for day-to-day income, expenses, and investments. Transaction amounts are stored in their native currency; dashboard and statistics present them in each user's default currency through display conversion.
 
 ## Language
+
+**Default currency**:
+The unit of account a user thinks in for dashboard balances and statistics.
+_Avoid_: Display currency, home currency, preferred currency
+
+**Transaction currency**:
+The currency in which a transaction amount was actually paid or received.
+_Avoid_: Native currency, native code, source currency, original currency field
+
+**Display conversion**:
+Presenting stored transaction amounts in a user's default currency without changing stored values.
+_Avoid_: Display transform, UI conversion, reporting FX
 
 **Currency conversion**:
 Converting a monetary amount from one currency to another using a latest exchange rate.

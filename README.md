@@ -1,6 +1,6 @@
 # Finance Tracker
 
-A personal finance web app for tracking income, expenses, and investments in **CZK**. Built with Django, PostgreSQL (Supabase), and a dark UI served via WhiteNoise.
+A personal finance web app for tracking income, expenses, and investments. Transactions are stored in their **native currency**; the dashboard and statistics show amounts in each user's **default currency** via on-the-fly **display conversion**. Built with Django, PostgreSQL (Supabase), and a dark UI served via WhiteNoise.
 
 **Repository:** [github.com/petkov93/finance-tracker](https://github.com/petkov93/finance-tracker)
 
@@ -9,28 +9,35 @@ A personal finance web app for tracking income, expenses, and investments in **C
 ## Features
 
 ### Dashboard
-- Overview of **balance**, total income, and total expenses (all time)
+- Overview of **balance**, total income, and total expenses (all time), summed in your default currency
 - Recent transactions with edit/delete
-- Amounts in CZK
+- When a transaction's native currency differs from your default, the converted amount is shown prominently with the original as a footnote
 
 ### Transactions
-- Add **income** or **expense** entries
+- Add **income** or **expense** entries in any [Frankfurter-supported](https://frankfurter.dev) currency
+- Currency picker defaults to your profile default on new entries
 - Optional category and description
 - Categories filtered by type (income vs expense) on the form
 
 ### Statistics
-- Summary cards (net balance, income, expense counts)
+- Summary cards (net balance, income, expense counts) after display conversion (historical rates for past dates, latest for today and future)
 - **Monthly bar chart** with configurable date range
-- **Pie charts** for expenses and income by category
+- **Pie charts** for expenses and income by category — all totals in your default currency
 
 ### Investments
-- Separate view for **invested** vs **profit** amounts (CZK)
+- Separate view for **invested** vs **profit** amounts (**CZK only** — no currency picker or conversion)
 - Portfolio value (**profit − invested**) — net gain or loss relative to capital put in
 - Same list/edit/delete flow as transactions
 
+### Currency converter
+- Standalone calculator at `/converter/` using **latest** exchange rates only
+- Default pair CZK → EUR; your last-used pair is remembered in the session
+- Independent of your profile default currency and transaction display logic
+
 ### Accounts
-- Register, log in, log out
-- Each user only sees their own data
+- Register with a required **default currency** (pre-selected from browser locale when it maps confidently to a supported code)
+- Change default currency later in **Settings**
+- Log in, log out; each user only sees their own data
 
 ### Admin
 - Django admin at `/admin/` for categories, transactions, and investment entries
@@ -61,7 +68,10 @@ finance-tracker/
 │   ├── migrations/
 │   ├── static/financetracker/css/
 │   ├── templates/financetracker/
-│   ├── models.py           # Category, Transaction, InvestmentEntry
+│   ├── models.py           # Category, Transaction, InvestmentEntry, UserProfile
+│   ├── services/
+│   │   ├── currency.py           # Frankfurter rates, convert, supported currencies
+│   │   └── display_conversion.py # Batch display conversion for dashboard/statistics
 │   ├── views.py
 │   ├── forms.py
 │   └── urls.py
@@ -147,6 +157,66 @@ python manage.py createsuperuser
 ```
 
 Then visit `/admin/`.
+
+---
+
+## Multi-currency
+
+### Data model
+
+| Concept | Where it lives | Purpose |
+|---------|----------------|---------|
+| **Default currency** | `UserProfile.default_currency` (one per user) | Unit of account for dashboard and statistics |
+| **Transaction currency** | `Transaction.currency` | Native currency the amount was actually paid or received in |
+| **Display conversion** | Computed at read time (not stored) | Converts transaction amounts into the user's default currency for display and aggregation |
+
+Existing users and transactions are migrated automatically: every user gets a profile with default **CZK**, and every existing transaction is backfilled as CZK. Users created via `createsuperuser` receive a lazy profile with CZK default on first login.
+
+### Registration and settings
+
+- **Registration** requires choosing a default currency from the Frankfurter-supported list. Client-side logic reads `navigator.language` and pre-selects the picker when the region maps unambiguously to a supported ISO code; otherwise the picker stays empty until the user chooses.
+- **Settings** includes a section to update default currency. Dashboard and statistics re-render in the new currency on the next page load.
+
+### Transaction entry
+
+- Each transaction stores `amount` and `currency` together — the amount is always in that row's native currency.
+- The currency picker on add/edit defaults to the user's profile default on new entries.
+- Investments are unchanged: amounts remain CZK-only with no currency field.
+
+### Display conversion behavior
+
+Dashboard and statistics do **not** sum raw `amount` values across mixed currencies. Instead, the display-conversion layer batches unique `(from, to, transaction_date)` rate lookups, converts each row, then aggregates.
+
+- **Same currency** as default: one formatted amount, no footnote.
+- **Different currency**: primary amount in default currency; secondary footnote shows the original native amount.
+- **Degraded mode**: if today's rate cannot be fetched (Frankfurter unavailable and no cache), converted totals are omitted, rows show native amounts, and a warning banner is shown. Past-date rates served from cache continue to work silently.
+
+### Exchange-rate policy
+
+Rates come from the [Frankfurter API](https://frankfurter.dev). The currency service (`financetracker/services/currency.py`) applies:
+
+| Transaction date | Rate used |
+|------------------|-----------|
+| Past (`< today`) | Historical rate for that date |
+| Today | Latest available rate |
+| Future (`> today`) | Latest available rate (same as today) |
+| Same `from`/`to` pair | `1` — no HTTP call |
+
+**Weekends and holidays:** when Frankfurter has no published rate for the exact date, the service walks back up to seven days to the nearest prior published rate. No rate-date hint is shown in the UI.
+
+**Converter page:** always uses latest rates only (`get_rate` without a date). It does not use transaction-date historical lookups.
+
+### Caching
+
+Django's cache backend stores fetched rates to limit API usage:
+
+| Rate type | Cache key | TTL |
+|-----------|-----------|-----|
+| Latest / today | `currency_rate_{FROM}_{TO}` | 24 hours |
+| Past date | `currency_rate_{FROM}_{TO}_{YYYY-MM-DD}` | ~10 years (effectively immutable) |
+| Supported currency list | `currency_supported_currencies` | 24 hours |
+
+Past rates are treated as immutable once cached. There is no database-backed rate table in this version.
 
 ---
 
