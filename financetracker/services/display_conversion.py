@@ -4,7 +4,11 @@ from decimal import Decimal
 from typing import Iterable
 
 from financetracker.models import Transaction
-from financetracker.services.currency import CurrencyConversionError, get_rate
+from financetracker.services.currency import (
+    CurrencyConversionError,
+    ensure_rate_snapshots,
+    get_rate,
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,8 @@ def _collect_rate_keys(
 def _fetch_rates(
     keys: set[tuple[str, str, date]],
 ) -> tuple[dict[tuple[str, str, date], Decimal], bool]:
+    ensure_rate_snapshots({on_date for _, _, on_date in keys})
+
     rates: dict[tuple[str, str, date], Decimal] = {}
     conversion_degraded = False
 
