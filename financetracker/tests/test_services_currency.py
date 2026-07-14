@@ -37,11 +37,20 @@ class CurrencyServiceTests(TestCase):
     def test_sync_latest_rates_upserts_eur_base_rows_for_today(self, mock_get):
         rates_response = MagicMock()
         rates_response.raise_for_status.return_value = None
-        rates_response.json.return_value = {
-            "base": "EUR",
-            "date": date.today().isoformat(),
-            "rates": {"USD": 1.1, "CZK": 25.0},
-        }
+        rates_response.json.return_value = [
+            {
+                "date": date.today().isoformat(),
+                "base": "EUR",
+                "quote": "USD",
+                "rate": 1.1,
+            },
+            {
+                "date": date.today().isoformat(),
+                "base": "EUR",
+                "quote": "CZK",
+                "rate": 25.0,
+            },
+        ]
 
         currencies_response = MagicMock()
         currencies_response.raise_for_status.return_value = None
