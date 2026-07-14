@@ -1,10 +1,14 @@
+from datetime import date
+
 import json
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
+from financetracker.models import ExchangeRate, SyncMetadata
 from financetracker.services.currency import CurrencyConversionError
 from financetracker.tests.factories import DEFAULT_PASSWORD, create_user
 
@@ -124,6 +128,27 @@ class CurrencyConverterViewTests(TestCase):
         )
         self.assertNotContains(response, "converted_amount", html=False)
 
+    def test_get_uses_stored_rates_without_mocking_get_rate(self):
+        fetched_at = timezone.now()
+        ExchangeRate.objects.create(
+            base_currency="EUR",
+            quote_currency="CZK",
+            rate_date=date.today(),
+            rate=Decimal("25.0"),
+            fetched_at=fetched_at,
+        )
+        metadata = SyncMetadata.get_singleton()
+        metadata.supported_currencies = SUPPORTED.copy()
+        metadata.save()
+
+        response = self.client.get(
+            reverse("currency_converter"),
+            {"from": "CZK", "to": "EUR"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["rate"], Decimal("1") / Decimal("25.0"))
+
 
 class ConverterRateApiTests(TestCase):
     def setUp(self):
@@ -159,6 +184,27 @@ class ConverterRateApiTests(TestCase):
         data = response.json()
         self.assertEqual(data, {"from": "CZK", "to": "EUR", "rate": "0.0401"})
         mock_get_rate.assert_called_once_with("CZK", "EUR")
+
+    def test_valid_pair_returns_rate_from_stored_rates(self):
+        fetched_at = timezone.now()
+        ExchangeRate.objects.create(
+            base_currency="EUR",
+            quote_currency="CZK",
+            rate_date=date.today(),
+            rate=Decimal("25.0"),
+            fetched_at=fetched_at,
+        )
+
+        response = self.client.get(
+            reverse("converter_rate_api"),
+            {"from": "CZK", "to": "EUR"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"from": "CZK", "to": "EUR", "rate": "0.0400"},
+        )
 
     @patch("financetracker.views.get_rate")
     def test_invalid_currency_returns_400(self, mock_get_rate):

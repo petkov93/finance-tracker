@@ -80,3 +80,4 @@ Desktop.ini
 # Deployment / build artifacts
 *.manifest
 *.spec
+.tmp-*

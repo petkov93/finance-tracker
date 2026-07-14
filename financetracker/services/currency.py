@@ -3,14 +3,14 @@ from decimal import Decimal
 
 import requests
 from django.core.cache import cache
+from django.utils import timezone
+
+from financetracker.models import EUR_BASE_CURRENCY, ExchangeRate, SyncMetadata
 
 FRANKFURTER_API_BASE = "https://api.frankfurter.dev"
-REQUEST_TIMEOUT_SECONDS = 10
-RATE_CACHE_TTL_SECONDS = 24 * 60 * 60
+REQUEST_TIMEOUT_SECONDS = 3
 PAST_RATE_CACHE_TTL_SECONDS = 10 * 365 * 24 * 60 * 60
 MAX_RATE_WALKBACK_DAYS = 7
-SUPPORTED_CURRENCIES_CACHE_KEY = "currency_supported_currencies"
-SUPPORTED_CURRENCIES_CACHE_TTL_SECONDS = 24 * 60 * 60
 
 
 class CurrencyConversionError(Exception):
@@ -25,9 +25,7 @@ def _normalize_currency(code: str) -> str:
     return code.upper()
 
 
-def _cache_key(from_currency: str, to_currency: str, on_date: date | None = None) -> str:
-    if on_date is None:
-        return f"currency_rate_{from_currency}_{to_currency}"
+def _cache_key(from_currency: str, to_currency: str, on_date: date) -> str:
     return f"currency_rate_{from_currency}_{to_currency}_{on_date.isoformat()}"
 
 
@@ -79,15 +77,95 @@ def _fetch_rate(from_code: str, to_code: str, lookup_date: date | None) -> Decim
     return _parse_rate_response(data, from_code, to_code)
 
 
-def _get_latest_rate(from_code: str, to_code: str) -> Decimal:
-    cache_key = _cache_key(from_code, to_code)
-    cached_rate = cache.get(cache_key)
-    if cached_rate is not None:
-        return Decimal(str(cached_rate))
+def _fetch_bulk_rates() -> dict[str, Decimal]:
+    url = f"{FRANKFURTER_API_BASE}/v2/rates"
 
-    rate = _fetch_rate(from_code, to_code, None)
-    cache.set(cache_key, str(rate), RATE_CACHE_TTL_SECONDS)
-    return rate
+    try:
+        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as exc:
+        raise CurrencyConversionError("Failed to fetch bulk exchange rates") from exc
+    except ValueError as exc:
+        raise CurrencyConversionError("Invalid JSON in bulk rates response") from exc
+
+    if not isinstance(data, list) or 'rate' not in data[0]:
+        raise CurrencyConversionError("Missing rates in bulk response")
+
+    return {item['quote'].upper(): Decimal(str(item['rate'])) for item in data}
+
+
+def _fetch_supported_currencies_from_api() -> dict[str, str]:
+    url = f"{FRANKFURTER_API_BASE}/v2/currencies"
+    try:
+        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as exc:
+        raise CurrencyConversionError("Failed to fetch supported currencies") from exc
+    except ValueError as exc:
+        raise CurrencyConversionError("Invalid JSON in currencies response") from exc
+
+    if not isinstance(data, list) or not data:
+        raise CurrencyConversionError("Missing currencies in response")
+
+    return {currency["iso_code"].upper(): currency["name"] for currency in data}
+
+
+def _upsert_exchange_rates(rate_date: date, rates: dict[str, Decimal]) -> None:
+    fetched_at = timezone.now()
+    for quote_currency, rate in rates.items():
+        ExchangeRate.objects.update_or_create(
+            base_currency=EUR_BASE_CURRENCY,
+            quote_currency=quote_currency,
+            rate_date=rate_date,
+            defaults={"rate": rate, "fetched_at": fetched_at},
+        )
+
+
+def sync_latest_rates() -> None:
+    today = date.today()
+    rates = _fetch_bulk_rates()
+    currencies = _fetch_supported_currencies_from_api()
+
+    _upsert_exchange_rates(today, rates)
+
+    metadata = SyncMetadata.get_singleton()
+    metadata.last_successful_sync_date = today
+    metadata.supported_currencies = currencies
+    metadata.save()
+
+
+def _get_eur_quote_rate(quote_currency: str, rate_date: date) -> Decimal:
+    if quote_currency == EUR_BASE_CURRENCY:
+        return Decimal("1")
+
+    try:
+        row = ExchangeRate.objects.get(
+            base_currency=EUR_BASE_CURRENCY,
+            quote_currency=quote_currency,
+            rate_date=rate_date,
+        )
+    except ExchangeRate.DoesNotExist as exc:
+        raise CurrencyConversionError(
+            f"No stored rate for {EUR_BASE_CURRENCY}/{quote_currency} on {rate_date.isoformat()}"
+        ) from exc
+
+    return row.rate
+
+
+def _derive_rate_from_eur_snapshot(
+    from_code: str,
+    to_code: str,
+    rate_date: date,
+) -> Decimal:
+    eur_to_from = _get_eur_quote_rate(from_code, rate_date)
+    eur_to_to = _get_eur_quote_rate(to_code, rate_date)
+    return eur_to_to / eur_to_from
+
+
+def _get_latest_rate(from_code: str, to_code: str) -> Decimal:
+    return _derive_rate_from_eur_snapshot(from_code, to_code, date.today())
 
 
 def _get_historical_rate(from_code: str, to_code: str, on_date: date) -> Decimal:
@@ -143,28 +221,8 @@ def convert(
 
 
 def get_supported_currencies() -> dict[str, str]:
-    cached = cache.get(SUPPORTED_CURRENCIES_CACHE_KEY)
-    if cached is not None:
-        return dict(cached)
+    metadata = SyncMetadata.get_singleton()
+    if metadata.supported_currencies:
+        return dict(metadata.supported_currencies)
 
-    url = f"{FRANKFURTER_API_BASE}/v2/currencies"
-    try:
-        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        data = response.json()
-    except requests.RequestException as exc:
-        raise CurrencyConversionError("Failed to fetch supported currencies") from exc
-    except ValueError as exc:
-        raise CurrencyConversionError("Invalid JSON in currencies response") from exc
-
-    if not isinstance(data, list) or not data:
-        raise CurrencyConversionError("Missing currencies in response")
-
-    currencies = {currency['iso_code'].upper(): currency['name'] for currency in data}
-
-    cache.set(
-        SUPPORTED_CURRENCIES_CACHE_KEY,
-        currencies,
-        SUPPORTED_CURRENCIES_CACHE_TTL_SECONDS
-    )
-    return currencies
+    return _fetch_supported_currencies_from_api()
