@@ -133,10 +133,45 @@ def dashboard(request):
     })
 
 
+def _transaction_currency_context(request):
+    try:
+        supported = get_supported_currencies()
+    except CurrencyConversionError:
+        return None
+    profile = ensure_user_profile(request.user)
+    currency_choices = build_currency_choices(supported)
+    return {
+        "currency_choices": currency_choices,
+        "default_currency": profile.default_currency,
+    }
+
+
 @login_required
 def add_transaction(request):
+    currency_context = _transaction_currency_context(request)
+    if currency_context is None:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/add_transaction.html",
+            {
+                "form": None,
+                "currency_error": True,
+                "title": "Add Transaction",
+                "all_categories": Category.objects.all(),
+            },
+            status=200,
+        )
+
     if request.method == "POST":
-        form = TransactionForm(request.POST)
+        form = TransactionForm(
+            request.POST,
+            currency_choices=currency_context["currency_choices"],
+            default_currency=currency_context["default_currency"],
+        )
         if form.is_valid():
             t = form.save(commit=False)
             t.user = request.user
@@ -144,7 +179,14 @@ def add_transaction(request):
             messages.success(request, "Transaction added successfully.")
             return redirect("dashboard")
     else:
-        form = TransactionForm(initial={"date": timezone.now().date()})
+        form = TransactionForm(
+            initial={
+                "date": timezone.now().date(),
+                "currency": currency_context["default_currency"],
+            },
+            currency_choices=currency_context["currency_choices"],
+            default_currency=currency_context["default_currency"],
+        )
     return render(request, "financetracker/add_transaction.html", {
         "form": form,
         "title": "Add Transaction",
@@ -155,14 +197,40 @@ def add_transaction(request):
 @login_required
 def edit_transaction(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    currency_context = _transaction_currency_context(request)
+    if currency_context is None:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/add_transaction.html",
+            {
+                "form": None,
+                "currency_error": True,
+                "title": "Edit Transaction",
+                "transaction": transaction,
+                "all_categories": Category.objects.all(),
+            },
+            status=200,
+        )
+
     if request.method == "POST":
-        form = TransactionForm(request.POST, instance=transaction)
+        form = TransactionForm(
+            request.POST,
+            instance=transaction,
+            currency_choices=currency_context["currency_choices"],
+        )
         if form.is_valid():
             form.save()
             messages.success(request, "Transaction updated.")
             return redirect("dashboard")
     else:
-        form = TransactionForm(instance=transaction)
+        form = TransactionForm(
+            instance=transaction,
+            currency_choices=currency_context["currency_choices"],
+        )
     return render(request, "financetracker/add_transaction.html", {
         "form": form,
         "title": "Edit Transaction",

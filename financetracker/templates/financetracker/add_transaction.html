@@ -11,6 +11,9 @@
 </div>
 
 <div class="form-card">
+  {% if currency_error %}
+    <p class="form-error">Couldn't load supported currencies right now. Try again in a moment.</p>
+  {% elif form %}
   <form method="post" novalidate>
     {% csrf_token %}
 
@@ -28,9 +31,15 @@
     </div>
 
     <div class="form-group">
-      <label class="form-label" for="{{ form.amount.id_for_label }}">Amount (CZK)</label>
+      <label class="form-label" for="{{ form.amount.id_for_label }}">Amount</label>
       {{ form.amount }}
       {% if form.amount.errors %}<div class="form-error">{{ form.amount.errors.0 }}</div>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.currency.id_for_label }}">Currency</label>
+      {{ form.currency }}
+      {% if form.currency.errors %}<div class="form-error">{{ form.currency.errors.0 }}</div>{% endif %}
     </div>
 
     <div class="form-group">
@@ -65,8 +74,10 @@
       </button>
     </div>
   </form>
+  {% endif %}
 </div>
 
+{% if form %}
 <script>
   const select = document.getElementById("id_category");
   const allOptions = Array.from(select.options).slice(1); // skip the blank option
@@ -98,4 +109,5 @@
   // Run on page load to filter immediately
   filterCategories();
 </script>
+{% endif %}
 {% endblock %}

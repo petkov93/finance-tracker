@@ -19,7 +19,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Transaction)
 class TransactionAdmin(admin.ModelAdmin):
-    list_display = ["date", "type", "amount", "category", "user", "description"]
+    list_display = ["date", "type", "amount", "currency", "category", "user", "description"]
     list_filter = ["type", "category", "date"]
     search_fields = ["description"]
     raw_id_fields = ["user", "category"]

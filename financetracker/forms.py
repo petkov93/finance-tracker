@@ -89,9 +89,16 @@ class DefaultCurrencyForm(forms.ModelForm):
 
 
 class TransactionForm(forms.ModelForm):
+    currency = forms.ChoiceField(
+        choices=[],
+        required=True,
+        label="Currency",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
     class Meta:
         model = Transaction
-        fields = ["type", "amount", "category", "description", "date"]
+        fields = ["type", "amount", "currency", "category", "description", "date"]
         widgets = {
             "type": forms.Select(attrs={"class": "form-select"}),
             "amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0.01", "placeholder": "0.00"}),
@@ -100,10 +107,22 @@ class TransactionForm(forms.ModelForm):
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, currency_choices=None, default_currency=None, **kwargs):
         super().__init__(*args, **kwargs)
+        choices = list(currency_choices or [])
+        self.fields["currency"].choices = choices
         self.fields["category"].empty_label = "— No category —"
         self.fields["category"].required = False
+        if not self.instance.pk and default_currency:
+            self.fields["currency"].initial = default_currency
+
+    def clean_currency(self):
+        code = self.cleaned_data.get("currency", "")
+        valid_codes = {choice[0] for choice in self.fields["currency"].choices}
+        normalized = code.upper()
+        if normalized not in valid_codes:
+            raise forms.ValidationError("Select a supported currency.")
+        return normalized
 
 
 class InvestmentEntryForm(forms.ModelForm):

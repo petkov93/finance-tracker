@@ -1,15 +1,18 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from financetracker.models import Transaction
+from financetracker.models import Transaction, ensure_user_profile
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_category,
     create_transaction,
     create_user,
 )
+
+SUPPORTED = {"CZK": "Czech Koruna", "EUR": "Euro", "USD": "US Dollar"}
 
 
 class TransactionViewsTests(TestCase):
@@ -19,6 +22,14 @@ class TransactionViewsTests(TestCase):
         self.other_user = create_user(username="bob")
         self.category = create_category()
         self.client.login(username=self.user.username, password=DEFAULT_PASSWORD)
+        self.supported_patcher = patch(
+            "financetracker.views.get_supported_currencies",
+            return_value=SUPPORTED.copy(),
+        )
+        self.supported_patcher.start()
+        self.addCleanup(self.supported_patcher.stop)
+        ensure_user_profile(self.user)
+        ensure_user_profile(self.other_user)
 
     def test_add_transaction(self):
         response = self.client.post(
@@ -26,6 +37,7 @@ class TransactionViewsTests(TestCase):
             {
                 "type": Transaction.INCOME,
                 "amount": "1500.50",
+                "currency": "CZK",
                 "category": self.category.pk,
                 "description": "Salary",
                 "date": "2025-01-15",
@@ -49,6 +61,7 @@ class TransactionViewsTests(TestCase):
             {
                 "type": Transaction.EXPENSE,
                 "amount": "75.00",
+                "currency": "CZK",
                 "category": self.category.pk,
                 "description": "Updated lunch",
                 "date": transaction.date.isoformat(),

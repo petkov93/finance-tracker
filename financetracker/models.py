@@ -52,6 +52,7 @@ class Transaction(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transactions")
     type = models.CharField(max_length=10, choices=TYPE_CHOICES)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, default=DEFAULT_PROFILE_CURRENCY)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
     description = models.CharField(max_length=255, blank=True)
     date = models.DateField(default=timezone.now)
@@ -61,7 +62,7 @@ class Transaction(models.Model):
         ordering = ["-date", "-created_at"]
 
     def __str__(self):
-        return f"{self.get_type_display()} — {self.amount} CZK on {self.date}"
+        return f"{self.get_type_display()} — {self.amount} {self.currency} on {self.date}"
 
 
 class InvestmentEntry(models.Model):
