@@ -3,15 +3,14 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import requests
-from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
 from financetracker.models import ExchangeRate, SyncMetadata
 from financetracker.services.currency import (
-    PAST_RATE_CACHE_TTL_SECONDS,
     CurrencyConversionError,
     convert,
+    ensure_rate_snapshots,
     get_rate,
     get_supported_currencies,
     sync_latest_rates,
@@ -19,9 +18,6 @@ from financetracker.services.currency import (
 
 
 class CurrencyServiceTests(TestCase):
-    def setUp(self):
-        cache.clear()
-
     def _seed_today_rates(self, rates: dict[str, Decimal]) -> None:
         fetched_at = timezone.now()
         for quote_currency, rate in rates.items():
@@ -177,21 +173,37 @@ class CurrencyServiceTests(TestCase):
             get_supported_currencies()
 
     @patch("financetracker.services.currency.requests.get")
-    def test_past_date_uses_historical_endpoint(self, mock_get):
+    def test_past_date_fetches_bulk_snapshot_and_stores_under_requested_date(self, mock_get):
         past_date = date.today() - timedelta(days=30)
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.5}
+        mock_response.json.return_value = [
+            {
+                "date": past_date.isoformat(),
+                "base": "EUR",
+                "quote": "CZK",
+                "rate": 25.5,
+            },
+            {
+                "date": past_date.isoformat(),
+                "base": "EUR",
+                "quote": "USD",
+                "rate": 1.1,
+            },
+        ]
         mock_get.return_value = mock_response
 
         result = get_rate("EUR", "CZK", on_date=past_date)
 
         self.assertEqual(result, Decimal("25.5"))
         mock_get.assert_called_once_with(
-            f"https://api.frankfurter.dev/v2/rate/EUR/CZK/{past_date.isoformat()}",
+            f"https://api.frankfurter.dev/v2/rates?date={past_date.isoformat()}",
             timeout=3,
         )
+        stored = ExchangeRate.objects.get(quote_currency="CZK", rate_date=past_date)
+        self.assertEqual(stored.rate, Decimal("25.5"))
+        self.assertEqual(stored.base_currency, "EUR")
 
     @patch("financetracker.services.currency.requests.get")
     def test_convert_with_on_date_uses_historical_rate(self, mock_get):
@@ -199,7 +211,14 @@ class CurrencyServiceTests(TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.0}
+        mock_response.json.return_value = [
+            {
+                "date": past_date.isoformat(),
+                "base": "EUR",
+                "quote": "CZK",
+                "rate": 25.0,
+            },
+        ]
         mock_get.return_value = mock_response
 
         result = convert(Decimal("100"), "EUR", "CZK", on_date=past_date)
@@ -208,7 +227,7 @@ class CurrencyServiceTests(TestCase):
         mock_get.assert_called_once()
 
     @patch("financetracker.services.currency.requests.get")
-    def test_weekend_date_walks_back_to_prior_published_rate(self, mock_get):
+    def test_weekend_date_walks_back_to_prior_published_bulk_snapshot(self, mock_get):
         saturday = date(2025, 3, 15)
         friday = date(2025, 3, 14)
 
@@ -218,7 +237,14 @@ class CurrencyServiceTests(TestCase):
         found = MagicMock()
         found.status_code = 200
         found.raise_for_status.return_value = None
-        found.json.return_value = {"rate": 25.1}
+        found.json.return_value = [
+            {
+                "date": friday.isoformat(),
+                "base": "EUR",
+                "quote": "CZK",
+                "rate": 25.1,
+            },
+        ]
         mock_get.side_effect = [missing, found]
 
         result = get_rate("EUR", "CZK", on_date=saturday)
@@ -226,13 +252,15 @@ class CurrencyServiceTests(TestCase):
         self.assertEqual(result, Decimal("25.1"))
         self.assertEqual(mock_get.call_count, 2)
         self.assertIn(
-            f"/EUR/CZK/{saturday.isoformat()}",
+            f"?date={saturday.isoformat()}",
             mock_get.call_args_list[0].args[0],
         )
         self.assertIn(
-            f"/EUR/CZK/{friday.isoformat()}",
+            f"?date={friday.isoformat()}",
             mock_get.call_args_list[1].args[0],
         )
+        stored = ExchangeRate.objects.get(quote_currency="CZK", rate_date=saturday)
+        self.assertEqual(stored.rate, Decimal("25.1"))
 
     def test_future_date_uses_stored_latest_rate(self):
         future_date = date.today() + timedelta(days=5)
@@ -253,52 +281,12 @@ class CurrencyServiceTests(TestCase):
         self.assertEqual(result, Decimal("25.0"))
         mock_get.assert_not_called()
 
-    @patch("financetracker.services.currency.cache.set")
-    @patch("financetracker.services.currency.requests.get")
-    def test_past_rate_cached_with_date_key_and_immutable_ttl(self, mock_get, mock_cache_set):
-        past_date = date.today() - timedelta(days=30)
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.0}
-        mock_get.return_value = mock_response
-
-        get_rate("EUR", "CZK", on_date=past_date)
-
-        mock_cache_set.assert_called_once_with(
-            f"currency_rate_EUR_CZK_{past_date.isoformat()}",
-            "25.0",
-            PAST_RATE_CACHE_TTL_SECONDS,
-        )
-
     @patch("financetracker.services.currency.requests.get")
     def test_same_currency_with_on_date_skips_http(self, mock_get):
         result = get_rate("EUR", "EUR", on_date=date.today() - timedelta(days=1))
 
         self.assertEqual(result, Decimal("1"))
         mock_get.assert_not_called()
-
-    @patch("financetracker.services.currency.cache.set")
-    @patch("financetracker.services.currency.requests.get")
-    def test_walk_back_rate_cached_under_requested_date_key(self, mock_get, mock_cache_set):
-        saturday = date(2025, 3, 15)
-
-        missing = MagicMock()
-        missing.status_code = 404
-
-        found = MagicMock()
-        found.status_code = 200
-        found.raise_for_status.return_value = None
-        found.json.return_value = {"rate": 25.1}
-        mock_get.side_effect = [missing, found]
-
-        get_rate("EUR", "CZK", on_date=saturday)
-
-        mock_cache_set.assert_called_once_with(
-            f"currency_rate_EUR_CZK_{saturday.isoformat()}",
-            "25.1",
-            PAST_RATE_CACHE_TTL_SECONDS,
-        )
 
     @patch("financetracker.services.currency.requests.get")
     def test_walk_back_exhausted_raises_currency_conversion_error(self, mock_get):
@@ -312,17 +300,99 @@ class CurrencyServiceTests(TestCase):
         self.assertEqual(mock_get.call_count, 8)
 
     @patch("financetracker.services.currency.requests.get")
-    def test_historical_cache_hit_avoids_second_http_request(self, mock_get):
+    def test_second_historical_get_rate_uses_db_without_http(self, mock_get):
         past_date = date.today() - timedelta(days=30)
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.0}
+        mock_response.json.return_value = [
+            {
+                "date": past_date.isoformat(),
+                "base": "EUR",
+                "quote": "CZK",
+                "rate": 25.0,
+            },
+        ]
         mock_get.return_value = mock_response
 
         first = get_rate("EUR", "CZK", on_date=past_date)
+        mock_get.reset_mock()
         second = get_rate("EUR", "CZK", on_date=past_date)
 
         self.assertEqual(first, Decimal("25.0"))
         self.assertEqual(second, Decimal("25.0"))
+        mock_get.assert_not_called()
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_multiple_pairs_on_same_historical_date_share_one_bulk_fetch(self, mock_get):
+        past_date = date.today() - timedelta(days=30)
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = [
+            {
+                "date": past_date.isoformat(),
+                "base": "EUR",
+                "quote": "USD",
+                "rate": 1.1,
+            },
+            {
+                "date": past_date.isoformat(),
+                "base": "EUR",
+                "quote": "CZK",
+                "rate": 25.0,
+            },
+        ]
+        mock_get.return_value = mock_response
+
+        usd_czk = get_rate("USD", "CZK", on_date=past_date)
+        eur_czk = get_rate("EUR", "CZK", on_date=past_date)
+
+        self.assertEqual(usd_czk, Decimal("25.0") / Decimal("1.1"))
+        self.assertEqual(eur_czk, Decimal("25.0"))
         mock_get.assert_called_once()
+
+    def test_historical_cross_derivation_from_stored_eur_rates(self):
+        past_date = date.today() - timedelta(days=30)
+        fetched_at = timezone.now()
+        for quote_currency, rate in {"USD": Decimal("1.1"), "CZK": Decimal("25.0")}.items():
+            ExchangeRate.objects.create(
+                base_currency="EUR",
+                quote_currency=quote_currency,
+                rate_date=past_date,
+                rate=rate,
+                fetched_at=fetched_at,
+            )
+
+        with patch("financetracker.services.currency.requests.get") as mock_get:
+            result = get_rate("USD", "CZK", on_date=past_date)
+
+        self.assertEqual(result, Decimal("25.0") / Decimal("1.1"))
+        mock_get.assert_not_called()
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_ensure_rate_snapshots_fetches_each_missing_date_once(self, mock_get):
+        past = date.today() - timedelta(days=10)
+        other_past = date.today() - timedelta(days=20)
+
+        def bulk_response(for_date: date):
+            response = MagicMock()
+            response.status_code = 200
+            response.raise_for_status.return_value = None
+            response.json.return_value = [
+                {
+                    "date": for_date.isoformat(),
+                    "base": "EUR",
+                    "quote": "CZK",
+                    "rate": 25.0,
+                },
+            ]
+            return response
+
+        mock_get.side_effect = [bulk_response(past), bulk_response(other_past)]
+
+        ensure_rate_snapshots([past, other_past, past])
+
+        self.assertEqual(mock_get.call_count, 2)
+        self.assertTrue(ExchangeRate.objects.filter(rate_date=past).exists())
+        self.assertTrue(ExchangeRate.objects.filter(rate_date=other_past).exists())
