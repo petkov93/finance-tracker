@@ -89,14 +89,10 @@ def _fetch_bulk_rates() -> dict[str, Decimal]:
     except ValueError as exc:
         raise CurrencyConversionError("Invalid JSON in bulk rates response") from exc
 
-    if not isinstance(data, dict) or "rates" not in data:
+    if not isinstance(data, list) or 'rate' not in data[0]:
         raise CurrencyConversionError("Missing rates in bulk response")
 
-    rates = data["rates"]
-    if not isinstance(rates, dict) or not rates:
-        raise CurrencyConversionError("Missing rates in bulk response")
-
-    return {code.upper(): Decimal(str(value)) for code, value in rates.items()}
+    return {item['quote'].upper(): Decimal(str(item['rate'])) for item in data}
 
 
 def _fetch_supported_currencies_from_api() -> dict[str, str]:
