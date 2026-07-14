@@ -6,7 +6,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import Transaction, UserProfile, ensure_user_profile
-from financetracker.services.currency import CurrencyConversionError
+from financetracker.services.currency import CurrencyConversionError, RateResult
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_category,
@@ -130,7 +130,7 @@ class TransactionViewsTests(TestCase):
 
         with patch(
             "financetracker.services.display_conversion.get_rate",
-            return_value=Decimal("25.00"),
+            return_value=RateResult(rate=Decimal("25.00")),
         ):
             response = self.client.get(reverse("dashboard"))
 
@@ -150,7 +150,7 @@ class TransactionViewsTests(TestCase):
 
         with patch(
             "financetracker.services.display_conversion.get_rate",
-            return_value=Decimal("25.00"),
+            return_value=RateResult(rate=Decimal("25.00")),
         ):
             response = self.client.get(reverse("dashboard"))
 
@@ -188,7 +188,7 @@ class TransactionViewsTests(TestCase):
 
         with patch(
             "financetracker.services.display_conversion.get_rate",
-            return_value=Decimal("25.00"),
+            return_value=RateResult(rate=Decimal("25.00")),
         ):
             response = self.client.get(reverse("dashboard"), {"category": food.pk})
 
@@ -217,6 +217,30 @@ class TransactionViewsTests(TestCase):
         self.assertContains(response, "Exchange rates are unavailable")
         self.assertContains(response, "10.00 EUR")
         self.assertNotContains(response, "hero-stats")
+
+    def test_dashboard_stale_rates_show_info_banner_and_totals(self):
+        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        yesterday = date.today() - timedelta(days=1)
+        create_transaction(
+            self.user,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            type="income",
+            transaction_date=date.today(),
+        )
+
+        with patch(
+            "financetracker.services.display_conversion.get_rate",
+            return_value=RateResult(rate=Decimal("25.00"), stale_date=yesterday),
+        ):
+            response = self.client.get(reverse("dashboard"))
+
+        self.assertFalse(response.context["conversion_degraded"])
+        self.assertEqual(response.context["rates_stale_date"], yesterday)
+        self.assertEqual(response.context["balance"], Decimal("250.00"))
+        self.assertContains(response, "Exchange rates from")
+        self.assertContains(response, yesterday.isoformat())
+        self.assertContains(response, "hero-stats")
 
     def test_user_cannot_edit_other_users_transaction(self):
         other_transaction = create_transaction(self.other_user)

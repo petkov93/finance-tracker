@@ -1,15 +1,16 @@
-from datetime import date
+from datetime import date, timedelta
 
 import json
 from decimal import Decimal
 from unittest.mock import patch
 
+import requests
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from financetracker.models import ExchangeRate, SyncMetadata
-from financetracker.services.currency import CurrencyConversionError
+from financetracker.services.currency import CurrencyConversionError, RateResult
 from financetracker.tests.factories import DEFAULT_PASSWORD, create_user
 
 SUPPORTED = {"CZK": "Czech Koruna", "EUR": "Euro", "BGN": "Bulgarian Lev", "USD": "US Dollar"}
@@ -35,7 +36,7 @@ class CurrencyConverterViewTests(TestCase):
             f"{reverse('login')}?next={reverse('currency_converter')}",
         )
 
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_first_get_uses_default_pair_and_shows_rate(self, mock_get_rate):
         response = self.client.get(reverse("currency_converter"))
 
@@ -45,7 +46,7 @@ class CurrencyConverterViewTests(TestCase):
         self.assertEqual(response.context["rate"], Decimal("0.0401"))
         mock_get_rate.assert_called_once_with("CZK", "EUR")
 
-    @patch("financetracker.views.get_rate", return_value=Decimal("1.9558"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("1.9558")))
     def test_get_uses_session_last_used_pair(self, mock_get_rate):
         session = self.client.session
         session["converter_from_currency"] = "EUR"
@@ -58,7 +59,7 @@ class CurrencyConverterViewTests(TestCase):
         self.assertEqual(response.context["to_currency"], "BGN")
         mock_get_rate.assert_called_once_with("EUR", "BGN")
 
-    @patch("financetracker.views.get_rate", return_value=Decimal("1.10"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("1.10")))
     def test_get_url_params_override_session(self, mock_get_rate):
         session = self.client.session
         session["converter_from_currency"] = "EUR"
@@ -74,7 +75,7 @@ class CurrencyConverterViewTests(TestCase):
         self.assertEqual(response.context["to_currency"], "EUR")
         mock_get_rate.assert_called_once_with("USD", "EUR")
 
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_get_invalid_currency_falls_back_to_defaults(self, mock_get_rate):
         response = self.client.get(
             reverse("currency_converter"),
@@ -85,7 +86,7 @@ class CurrencyConverterViewTests(TestCase):
         self.assertEqual(response.context["to_currency"], "EUR")
         mock_get_rate.assert_called_once_with("CZK", "EUR")
 
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_get_amount_query_param_repopulates_form_without_result(self, mock_get_rate):
         response = self.client.get(
             reverse("currency_converter"),
@@ -111,7 +112,7 @@ class CurrencyConverterViewTests(TestCase):
         self.assertContains(response, "Couldn't fetch the exchange rate", html=False)
         self.assertIsNone(response.context.get("rate"))
 
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_get_shell_exposes_interactive_client_markers(self, mock_get_rate):
         response = self.client.get(reverse("currency_converter"))
 
@@ -139,6 +140,7 @@ class CurrencyConverterViewTests(TestCase):
         )
         metadata = SyncMetadata.get_singleton()
         metadata.supported_currencies = SUPPORTED.copy()
+        metadata.last_successful_sync_date = date.today()
         metadata.save()
 
         response = self.client.get(
@@ -148,6 +150,22 @@ class CurrencyConverterViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["rate"], Decimal("1") / Decimal("25.0"))
+        self.assertIsNone(response.context.get("rates_stale_date"))
+
+    @patch("financetracker.views.get_rate")
+    def test_get_shows_stale_rate_warning_when_rates_are_stale(self, mock_get_rate):
+        yesterday = date.today() - timedelta(days=1)
+        mock_get_rate.return_value = RateResult(
+            rate=Decimal("0.0401"),
+            stale_date=yesterday,
+        )
+
+        response = self.client.get(reverse("currency_converter"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["rates_stale_date"], yesterday)
+        self.assertContains(response, "Exchange rates from")
+        self.assertContains(response, yesterday.isoformat())
 
 
 class ConverterRateApiTests(TestCase):
@@ -173,7 +191,7 @@ class ConverterRateApiTests(TestCase):
             f"{reverse('login')}?next={reverse('converter_rate_api')}%3Ffrom%3DCZK%26to%3DEUR",
         )
 
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.04012345"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.04012345")))
     def test_valid_pair_returns_rate_json(self, mock_get_rate):
         response = self.client.get(
             reverse("converter_rate_api"),
@@ -194,6 +212,9 @@ class ConverterRateApiTests(TestCase):
             rate=Decimal("25.0"),
             fetched_at=fetched_at,
         )
+        metadata = SyncMetadata.get_singleton()
+        metadata.last_successful_sync_date = date.today()
+        metadata.save(update_fields=["last_successful_sync_date"])
 
         response = self.client.get(
             reverse("converter_rate_api"),
@@ -205,6 +226,35 @@ class ConverterRateApiTests(TestCase):
             response.json(),
             {"from": "CZK", "to": "EUR", "rate": "0.0400"},
         )
+
+    def test_valid_pair_returns_stale_rate_from_stored_rates(self):
+        yesterday = date.today() - timedelta(days=1)
+        fetched_at = timezone.now()
+        ExchangeRate.objects.create(
+            base_currency="EUR",
+            quote_currency="CZK",
+            rate_date=yesterday,
+            rate=Decimal("25.0"),
+            fetched_at=fetched_at,
+        )
+
+        with patch(
+            "financetracker.services.currency.ensure_sync_if_stale",
+        ), patch(
+            "financetracker.services.currency.requests.get",
+            side_effect=requests.RequestException("network down"),
+        ):
+            response = self.client.get(
+                reverse("converter_rate_api"),
+                {"from": "CZK", "to": "EUR"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["from"], "CZK")
+        self.assertEqual(data["to"], "EUR")
+        self.assertEqual(data["rate"], "0.0400")
+        self.assertEqual(data["rates_stale_date"], yesterday.isoformat())
 
     @patch("financetracker.views.get_rate")
     def test_invalid_currency_returns_400(self, mock_get_rate):
@@ -266,7 +316,7 @@ class ConverterConvertApiTests(TestCase):
         )
 
     @patch("financetracker.views.convert", return_value=Decimal("20.050000"))
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_success_returns_conversion_json_and_updates_session(
         self, mock_get_rate, mock_convert
     ):
@@ -288,7 +338,7 @@ class ConverterConvertApiTests(TestCase):
         self.assertEqual(self.client.session["converter_to_currency"], "EUR")
 
     @patch("financetracker.views.convert")
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_empty_amount_returns_400_without_calling_convert(self, mock_get_rate, mock_convert):
         response = self._post_convert({"from": "CZK", "to": "EUR", "amount": ""})
 
@@ -298,7 +348,7 @@ class ConverterConvertApiTests(TestCase):
         self.assertNotIn("converter_from_currency", self.client.session)
 
     @patch("financetracker.views.convert")
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_zero_amount_returns_400_without_calling_convert(self, mock_get_rate, mock_convert):
         response = self._post_convert({"from": "CZK", "to": "EUR", "amount": "0"})
 
@@ -307,7 +357,7 @@ class ConverterConvertApiTests(TestCase):
         mock_convert.assert_not_called()
 
     @patch("financetracker.views.convert")
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_negative_amount_returns_400_without_calling_convert(
         self, mock_get_rate, mock_convert
     ):
@@ -318,7 +368,7 @@ class ConverterConvertApiTests(TestCase):
         mock_convert.assert_not_called()
 
     @patch("financetracker.views.convert", side_effect=CurrencyConversionError("failed"))
-    @patch("financetracker.views.get_rate", return_value=Decimal("0.0401"))
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_conversion_error_returns_error_json_without_session_update(
         self, mock_get_rate, mock_convert
     ):

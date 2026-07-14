@@ -1,16 +1,19 @@
 from datetime import date, timedelta
 from decimal import Decimal
+from threading import Barrier, Thread
 from unittest.mock import MagicMock, patch
 
 import requests
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from financetracker.models import ExchangeRate, SyncMetadata
 from financetracker.services.currency import (
     CurrencyConversionError,
+    RateResult,
     convert,
     ensure_rate_snapshots,
+    ensure_sync_if_stale,
     get_rate,
     get_supported_currencies,
     sync_latest_rates,
@@ -28,6 +31,9 @@ class CurrencyServiceTests(TestCase):
                 rate=rate,
                 fetched_at=fetched_at,
             )
+        metadata = SyncMetadata.get_singleton()
+        metadata.last_successful_sync_date = date.today()
+        metadata.save(update_fields=["last_successful_sync_date"])
 
     @patch("financetracker.services.currency.requests.get")
     def test_sync_latest_rates_upserts_eur_base_rows_for_today(self, mock_get):
@@ -80,7 +86,8 @@ class CurrencyServiceTests(TestCase):
 
         result = get_rate("USD", "CZK")
 
-        self.assertEqual(result, Decimal("25.0") / Decimal("1.1"))
+        self.assertEqual(result.rate, Decimal("25.0") / Decimal("1.1"))
+        self.assertIsNone(result.stale_date)
 
     @patch("financetracker.services.currency.requests.get")
     def test_same_currency_conversion_returns_amount_without_http(self, mock_get):
@@ -103,22 +110,22 @@ class CurrencyServiceTests(TestCase):
             first = get_rate("EUR", "CZK")
             second = get_rate("EUR", "CZK")
 
-        self.assertEqual(first, Decimal("25.0"))
-        self.assertEqual(second, Decimal("25.0"))
+        self.assertEqual(first.rate, Decimal("25.0"))
+        self.assertEqual(second.rate, Decimal("25.0"))
         mock_get.assert_not_called()
 
     @patch("financetracker.services.currency.requests.get")
     def test_missing_stored_rate_raises_currency_conversion_error(self, mock_get):
-        with self.assertRaises(CurrencyConversionError):
-            get_rate("EUR", "CZK")
-
-        mock_get.assert_not_called()
+        mock_get.side_effect = requests.RequestException("network down")
+        with patch("financetracker.services.currency.ensure_sync_if_stale"):
+            with self.assertRaises(CurrencyConversionError):
+                get_rate("EUR", "CZK")
 
     def test_same_currency_latest_rate_returns_one_without_http_or_db(self):
         with patch("financetracker.services.currency.requests.get") as mock_get:
             result = get_rate("EUR", "EUR")
 
-        self.assertEqual(result, Decimal("1"))
+        self.assertEqual(result.rate, Decimal("1"))
         mock_get.assert_not_called()
 
     def test_mixed_case_currency_codes_normalized(self):
@@ -127,7 +134,7 @@ class CurrencyServiceTests(TestCase):
         mixed = get_rate("eur", "czk")
         upper = get_rate("EUR", "CZK")
 
-        self.assertEqual(mixed, upper)
+        self.assertEqual(mixed.rate, upper.rate)
 
     @patch("financetracker.services.currency.requests.get")
     def test_non_positive_amount_raises_value_error_without_api_call(self, mock_get):
@@ -196,7 +203,8 @@ class CurrencyServiceTests(TestCase):
 
         result = get_rate("EUR", "CZK", on_date=past_date)
 
-        self.assertEqual(result, Decimal("25.5"))
+        self.assertEqual(result.rate, Decimal("25.5"))
+        self.assertIsNone(result.stale_date)
         mock_get.assert_called_once_with(
             f"https://api.frankfurter.dev/v2/rates?date={past_date.isoformat()}",
             timeout=3,
@@ -249,7 +257,7 @@ class CurrencyServiceTests(TestCase):
 
         result = get_rate("EUR", "CZK", on_date=saturday)
 
-        self.assertEqual(result, Decimal("25.1"))
+        self.assertEqual(result.rate, Decimal("25.1"))
         self.assertEqual(mock_get.call_count, 2)
         self.assertIn(
             f"?date={saturday.isoformat()}",
@@ -269,7 +277,7 @@ class CurrencyServiceTests(TestCase):
         with patch("financetracker.services.currency.requests.get") as mock_get:
             result = get_rate("EUR", "CZK", on_date=future_date)
 
-        self.assertEqual(result, Decimal("25.0"))
+        self.assertEqual(result.rate, Decimal("25.0"))
         mock_get.assert_not_called()
 
     def test_today_date_uses_stored_latest_rate(self):
@@ -278,14 +286,14 @@ class CurrencyServiceTests(TestCase):
         with patch("financetracker.services.currency.requests.get") as mock_get:
             result = get_rate("EUR", "CZK", on_date=date.today())
 
-        self.assertEqual(result, Decimal("25.0"))
+        self.assertEqual(result.rate, Decimal("25.0"))
         mock_get.assert_not_called()
 
     @patch("financetracker.services.currency.requests.get")
     def test_same_currency_with_on_date_skips_http(self, mock_get):
         result = get_rate("EUR", "EUR", on_date=date.today() - timedelta(days=1))
 
-        self.assertEqual(result, Decimal("1"))
+        self.assertEqual(result.rate, Decimal("1"))
         mock_get.assert_not_called()
 
     @patch("financetracker.services.currency.requests.get")
@@ -319,8 +327,8 @@ class CurrencyServiceTests(TestCase):
         mock_get.reset_mock()
         second = get_rate("EUR", "CZK", on_date=past_date)
 
-        self.assertEqual(first, Decimal("25.0"))
-        self.assertEqual(second, Decimal("25.0"))
+        self.assertEqual(first.rate, Decimal("25.0"))
+        self.assertEqual(second.rate, Decimal("25.0"))
         mock_get.assert_not_called()
 
     @patch("financetracker.services.currency.requests.get")
@@ -348,8 +356,8 @@ class CurrencyServiceTests(TestCase):
         usd_czk = get_rate("USD", "CZK", on_date=past_date)
         eur_czk = get_rate("EUR", "CZK", on_date=past_date)
 
-        self.assertEqual(usd_czk, Decimal("25.0") / Decimal("1.1"))
-        self.assertEqual(eur_czk, Decimal("25.0"))
+        self.assertEqual(usd_czk.rate, Decimal("25.0") / Decimal("1.1"))
+        self.assertEqual(eur_czk.rate, Decimal("25.0"))
         mock_get.assert_called_once()
 
     def test_historical_cross_derivation_from_stored_eur_rates(self):
@@ -367,8 +375,115 @@ class CurrencyServiceTests(TestCase):
         with patch("financetracker.services.currency.requests.get") as mock_get:
             result = get_rate("USD", "CZK", on_date=past_date)
 
-        self.assertEqual(result, Decimal("25.0") / Decimal("1.1"))
+        self.assertEqual(result.rate, Decimal("25.0") / Decimal("1.1"))
         mock_get.assert_not_called()
+
+    def _seed_rates_for_date(
+        self,
+        rate_date: date,
+        rates: dict[str, Decimal],
+    ) -> None:
+        fetched_at = timezone.now()
+        for quote_currency, rate in rates.items():
+            ExchangeRate.objects.create(
+                base_currency="EUR",
+                quote_currency=quote_currency,
+                rate_date=rate_date,
+                rate=rate,
+                fetched_at=fetched_at,
+            )
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_stale_fallback_returns_rate_with_stale_date_when_api_fails(self, mock_get):
+        yesterday = date.today() - timedelta(days=1)
+        self._seed_rates_for_date(yesterday, {"CZK": Decimal("24.0")})
+        mock_get.side_effect = requests.RequestException("network down")
+
+        with patch(
+            "financetracker.services.currency.ensure_sync_if_stale",
+        ):
+            result = get_rate("EUR", "CZK")
+
+        self.assertIsInstance(result, RateResult)
+        self.assertEqual(result.rate, Decimal("24.0"))
+        self.assertEqual(result.stale_date, yesterday)
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_true_unavailability_raises_when_api_fails_and_no_db_rows(self, mock_get):
+        mock_get.side_effect = requests.RequestException("network down")
+
+        with patch(
+            "financetracker.services.currency.ensure_sync_if_stale",
+        ):
+            with self.assertRaises(CurrencyConversionError):
+                get_rate("EUR", "CZK")
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_startup_sync_lock_prevents_double_fetch(self, mock_get):
+        rates_response = MagicMock()
+        rates_response.raise_for_status.return_value = None
+        rates_response.json.return_value = [
+            {
+                "date": date.today().isoformat(),
+                "base": "EUR",
+                "quote": "CZK",
+                "rate": 25.0,
+            },
+        ]
+        currencies_response = MagicMock()
+        currencies_response.raise_for_status.return_value = None
+        currencies_response.json.return_value = [
+            {"iso_code": "EUR", "name": "Euro"},
+            {"iso_code": "CZK", "name": "Czech Koruna"},
+        ]
+        mock_get.side_effect = [rates_response, currencies_response]
+
+        ensure_sync_if_stale()
+        ensure_sync_if_stale()
+
+        self.assertEqual(mock_get.call_count, 2)
+        metadata = SyncMetadata.get_singleton()
+        self.assertEqual(metadata.last_successful_sync_date, date.today())
+        self.assertFalse(metadata.sync_in_progress)
+
+
+class StartupSyncLockConcurrencyTests(TransactionTestCase):
+    @patch("financetracker.services.currency.requests.get")
+    def test_concurrent_sync_attempts_do_not_double_fetch(self, mock_get):
+        rates_response = MagicMock()
+        rates_response.raise_for_status.return_value = None
+        rates_response.json.return_value = [
+            {
+                "date": date.today().isoformat(),
+                "base": "EUR",
+                "quote": "CZK",
+                "rate": 25.0,
+            },
+        ]
+        currencies_response = MagicMock()
+        currencies_response.raise_for_status.return_value = None
+        currencies_response.json.return_value = [
+            {"iso_code": "EUR", "name": "Euro"},
+            {"iso_code": "CZK", "name": "Czech Koruna"},
+        ]
+        mock_get.side_effect = [rates_response, currencies_response]
+
+        barrier = Barrier(2)
+
+        def worker():
+            barrier.wait()
+            ensure_sync_if_stale()
+
+        threads = [Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(mock_get.call_count, 2)
+        metadata = SyncMetadata.get_singleton()
+        self.assertEqual(metadata.last_successful_sync_date, date.today())
+        self.assertFalse(metadata.sync_in_progress)
 
     @patch("financetracker.services.currency.requests.get")
     def test_ensure_rate_snapshots_fetches_each_missing_date_once(self, mock_get):

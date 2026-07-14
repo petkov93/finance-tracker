@@ -361,6 +361,7 @@ body.sidebar-collapsed .sidebar-link.active::before {
 .alert.success { border-left-color: var(--income); }
 .alert.error   { border-left-color: var(--expense); }
 .alert.warning { border-left-color: #d97706; }
+.alert.info    { border-left-color: var(--accent); }
 
 .transaction-amount-footnote {
   font-family: var(--font-mono);
