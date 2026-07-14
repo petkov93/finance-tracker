@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from decimal import Decimal
+import requests
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
@@ -150,6 +151,25 @@ class DisplayConversionTests(TestCase):
         self.assertIsNone(result.total_income)
         self.assertIsNone(result.total_expense)
         self.assertIsNone(result.balance)
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_historical_snapshot_fetch_failure_does_not_crash_display(self, mock_get):
+        past = date.today() - timedelta(days=7)
+        mock_get.side_effect = requests.RequestException("network down")
+        transaction = create_transaction(
+            self.user,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            transaction_date=past,
+        )
+
+        result = convert_for_display([transaction], "CZK")
+
+        self.assertFalse(result.conversion_degraded)
+        row = result.rows[0]
+        self.assertEqual(row.primary_amount, Decimal("10.00"))
+        self.assertEqual(row.primary_currency, "EUR")
+        self.assertFalse(row.show_native_footnote)
 
     def test_historical_rate_failure_does_not_degrade_dashboard(self):
         past = date.today() - timedelta(days=7)
