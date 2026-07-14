@@ -10,10 +10,19 @@
   </div>
 </div>
 
+{% if conversion_degraded %}
+  <div class="alerts animate-in animate-in-delay-1">
+    <div class="alert warning" role="status">
+      Exchange rates are unavailable right now. Totals and charts are hidden until rates return.
+    </div>
+  </div>
+{% endif %}
+
+{% if not conversion_degraded %}
 <div class="hero-stats hero-stats--compact animate-in animate-in-delay-1">
   <div class="hero-balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
     <span class="summary-label">Net balance</span>
-    <span class="hero-amount">{{ balance|floatformat:2 }} <small>CZK</small></span>
+    <span class="hero-amount">{{ balance|floatformat:2 }} <small>{{ default_currency }}</small></span>
     <span class="summary-sub">{{ total_count }} transactions</span>
   </div>
   <div class="hero-secondary">
@@ -29,6 +38,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <div class="charts-grid animate-in animate-in-delay-2">
   <div class="chart-card wide">
@@ -45,11 +55,14 @@
         </div>
       </form>
     </div>
+    {% if not conversion_degraded %}
     <div class="chart-container">
       <canvas id="monthlyChart"></canvas>
     </div>
+    {% endif %}
   </div>
 
+  {% if not conversion_degraded %}
   <div class="chart-card">
     <h2 class="chart-title">Expenses by category</h2>
     <div class="chart-container chart-container--sm">
@@ -69,8 +82,10 @@
       <p class="chart-empty">No categorised income yet.</p>
     {% endif %}
   </div>
+  {% endif %}
 </div>
 
+{% if not conversion_degraded %}
 <script>
   const FONT_UI = "'Source Sans 3', system-ui, sans-serif";
   const FONT_MONO = "'IBM Plex Mono', monospace";
@@ -107,7 +122,7 @@
           ticks: {
             color: TICK_COLOR,
             font: { family: FONT_MONO, size: 11 },
-            callback: v => v.toLocaleString("cs-CZ") + " CZK"
+            callback: v => v.toLocaleString("cs-CZ") + " {{ default_currency }}"
           },
           grid: { color: GRID_COLOR },
           beginAtZero: true
@@ -131,7 +146,7 @@
         maintainAspectRatio: false,
         plugins: {
           legend: { position: "bottom", labels: { color: LEGEND_COLOR, font: { family: FONT_UI, size: 11 }, padding: 14 } },
-          tooltip: { callbacks: { label: c => " " + c.parsed.toLocaleString("cs-CZ") + " CZK" } }
+          tooltip: { callbacks: { label: c => " " + c.parsed.toLocaleString("cs-CZ") + " {{ default_currency }}" } }
         }
       }
     });
@@ -152,11 +167,12 @@
         maintainAspectRatio: false,
         plugins: {
           legend: { position: "bottom", labels: { color: LEGEND_COLOR, font: { family: FONT_UI, size: 11 }, padding: 14 } },
-          tooltip: { callbacks: { label: c => " " + c.parsed.toLocaleString("cs-CZ") + " CZK" } }
+          tooltip: { callbacks: { label: c => " " + c.parsed.toLocaleString("cs-CZ") + " {{ default_currency }}" } }
         }
       }
     });
   }
 </script>
+{% endif %}
 </div>
 {% endblock %}

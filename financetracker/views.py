@@ -8,7 +8,6 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.db import transaction
 from django.db.models import Q, Sum
-from django.db.models.functions import TruncMonth
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -252,7 +251,7 @@ def delete_transaction(request, pk):
 
 @login_required
 def statistics(request):
-    qs = Transaction.objects.filter(user=request.user)
+    qs = Transaction.objects.filter(user=request.user).select_related("category")
 
     # Date range for monthly chart — default to current year
     today = date.today()
@@ -277,58 +276,94 @@ def statistics(request):
 
     qs_filtered = qs.filter(date__gte=from_date, date__lte=to_date)
 
-    # Monthly chart filtered by date range
-    monthly_qs = (
-        qs_filtered
-        .annotate(month=TruncMonth("date"))
-        .values("month", "type")
-        .annotate(total=Sum("amount"))
-        .order_by("month")
+    profile = ensure_user_profile(request.user)
+    display = convert_for_display(
+        qs_filtered,
+        profile.default_currency,
+        totals_transactions=qs_filtered,
     )
-
-    months_map = {}
-    for row in monthly_qs:
-        label = row["month"].strftime("%b %Y")
-        if label not in months_map:
-            months_map[label] = {"income": 0, "expense": 0}
-        months_map[label][row["type"]] = float(row["total"])
-
-    month_labels   = list(months_map.keys())
-    monthly_income  = [months_map[m]["income"]  for m in month_labels]
-    monthly_expense = [months_map[m]["expense"] for m in month_labels]
-
-    # Category breakdowns (filtered by date range)
-    cat_expenses = (
-        qs_filtered.filter(type="expense", category__isnull=False)
-        .values("category__name")
-        .annotate(total=Sum("amount"))
-        .order_by("-total")
-    )
-    cat_labels = [r["category__name"] for r in cat_expenses]
-    cat_values = [float(r["total"]) for r in cat_expenses]
-    has_expense_categories = bool(cat_labels)
-
-    cat_income = (
-        qs_filtered.filter(type="income", category__isnull=False)
-        .values("category__name")
-        .annotate(total=Sum("amount"))
-        .order_by("-total")
-    )
-    income_cat_labels = [r["category__name"] for r in cat_income]
-    income_cat_values = [float(r["total"]) for r in cat_income]
-    has_income_categories = bool(income_cat_labels)
-
-    # Summary totals (filtered by date range)
-    totals = qs_filtered.aggregate(
-        total_income=Sum("amount", filter=Q(type="income")),
-        total_expense=Sum("amount", filter=Q(type="expense")),
-    )
-    total_income  = float(totals["total_income"]  or 0)
-    total_expense = float(totals["total_expense"] or 0)
 
     total_count   = qs_filtered.count()
     income_count  = qs_filtered.filter(type="income").count()
     expense_count = qs_filtered.filter(type="expense").count()
+
+    month_labels: list[str] = []
+    monthly_income: list[float] = []
+    monthly_expense: list[float] = []
+    cat_labels: list[str] = []
+    cat_values: list[float] = []
+    income_cat_labels: list[str] = []
+    income_cat_values: list[float] = []
+
+    if not display.conversion_degraded:
+        months_map: dict[str, dict[str, Decimal]] = {}
+        month_order: dict[str, date] = {}
+        cat_expense_map: dict[str, Decimal] = {}
+        cat_income_map: dict[str, Decimal] = {}
+
+        for row in display.rows:
+            transaction = row.transaction
+            if (
+                transaction.currency != display.default_currency
+                and not row.show_native_footnote
+            ):
+                continue
+
+            amount = row.primary_amount
+            month_start = transaction.date.replace(day=1)
+            month_label = month_start.strftime("%b %Y")
+            if month_label not in months_map:
+                months_map[month_label] = {
+                    "income": Decimal("0"),
+                    "expense": Decimal("0"),
+                }
+                month_order[month_label] = month_start
+            months_map[month_label][transaction.type] += amount
+
+            if transaction.category is None:
+                continue
+            category_name = transaction.category.name
+            if transaction.type == Transaction.EXPENSE:
+                cat_expense_map[category_name] = (
+                    cat_expense_map.get(category_name, Decimal("0")) + amount
+                )
+            else:
+                cat_income_map[category_name] = (
+                    cat_income_map.get(category_name, Decimal("0")) + amount
+                )
+
+        month_labels = sorted(months_map.keys(), key=lambda label: month_order[label])
+        monthly_income = [
+            float(months_map[label]["income"]) for label in month_labels
+        ]
+        monthly_expense = [
+            float(months_map[label]["expense"]) for label in month_labels
+        ]
+
+        cat_labels = sorted(
+            cat_expense_map.keys(),
+            key=lambda name: cat_expense_map[name],
+            reverse=True,
+        )
+        cat_values = [float(cat_expense_map[name]) for name in cat_labels]
+
+        income_cat_labels = sorted(
+            cat_income_map.keys(),
+            key=lambda name: cat_income_map[name],
+            reverse=True,
+        )
+        income_cat_values = [float(cat_income_map[name]) for name in income_cat_labels]
+
+    has_expense_categories = bool(cat_labels)
+    has_income_categories = bool(income_cat_labels)
+
+    total_income = (
+        float(display.total_income) if display.total_income is not None else None
+    )
+    total_expense = (
+        float(display.total_expense) if display.total_expense is not None else None
+    )
+    balance = float(display.balance) if display.balance is not None else None
 
     return render(request, "financetracker/statistics.html", {
         "month_labels":       json.dumps(month_labels),
@@ -342,12 +377,14 @@ def statistics(request):
         "has_income_categories": has_income_categories,
         "total_income":       total_income,
         "total_expense":      total_expense,
-        "balance":            total_income - total_expense,
+        "balance":            balance,
         "total_count":        total_count,
         "income_count":       income_count,
         "expense_count":      expense_count,
         "from_date":          from_date.isoformat(),
         "to_date":            to_date.isoformat(),
+        "default_currency":   display.default_currency,
+        "conversion_degraded": display.conversion_degraded,
     })
 
 
