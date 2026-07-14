@@ -3,6 +3,45 @@ from django.db import models
 from django.utils import timezone
 
 DEFAULT_PROFILE_CURRENCY = "CZK"
+EUR_BASE_CURRENCY = "EUR"
+
+
+class ExchangeRate(models.Model):
+    base_currency = models.CharField(max_length=3)
+    quote_currency = models.CharField(max_length=3)
+    rate_date = models.DateField()
+    rate = models.DecimalField(max_digits=20, decimal_places=10)
+    fetched_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["base_currency", "quote_currency", "rate_date"],
+                name="unique_exchange_rate",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["rate_date", "quote_currency"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.base_currency}/{self.quote_currency} "
+            f"on {self.rate_date}: {self.rate}"
+        )
+
+
+class SyncMetadata(models.Model):
+    last_successful_sync_date = models.DateField(null=True, blank=True)
+    supported_currencies = models.JSONField(default=dict)
+
+    @classmethod
+    def get_singleton(cls):
+        metadata, _created = cls.objects.get_or_create(pk=1)
+        return metadata
+
+    def __str__(self):
+        return f"Sync metadata (last sync: {self.last_successful_sync_date})"
 
 
 class UserProfile(models.Model):

@@ -5,20 +5,77 @@ from unittest.mock import MagicMock, patch
 import requests
 from django.core.cache import cache
 from django.test import TestCase
+from django.utils import timezone
 
+from financetracker.models import ExchangeRate, SyncMetadata
 from financetracker.services.currency import (
     PAST_RATE_CACHE_TTL_SECONDS,
-    RATE_CACHE_TTL_SECONDS,
     CurrencyConversionError,
     convert,
     get_rate,
     get_supported_currencies,
+    sync_latest_rates,
 )
 
 
 class CurrencyServiceTests(TestCase):
     def setUp(self):
         cache.clear()
+
+    def _seed_today_rates(self, rates: dict[str, Decimal]) -> None:
+        fetched_at = timezone.now()
+        for quote_currency, rate in rates.items():
+            ExchangeRate.objects.create(
+                base_currency="EUR",
+                quote_currency=quote_currency,
+                rate_date=date.today(),
+                rate=rate,
+                fetched_at=fetched_at,
+            )
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_sync_latest_rates_upserts_eur_base_rows_for_today(self, mock_get):
+        rates_response = MagicMock()
+        rates_response.raise_for_status.return_value = None
+        rates_response.json.return_value = {
+            "base": "EUR",
+            "date": date.today().isoformat(),
+            "rates": {"USD": 1.1, "CZK": 25.0},
+        }
+
+        currencies_response = MagicMock()
+        currencies_response.raise_for_status.return_value = None
+        currencies_response.json.return_value = [
+            {"iso_code": "EUR", "name": "Euro"},
+            {"iso_code": "USD", "name": "US Dollar"},
+            {"iso_code": "CZK", "name": "Czech Koruna"},
+        ]
+        mock_get.side_effect = [rates_response, currencies_response]
+
+        sync_latest_rates()
+
+        self.assertEqual(ExchangeRate.objects.filter(rate_date=date.today()).count(), 2)
+        usd_row = ExchangeRate.objects.get(quote_currency="USD", rate_date=date.today())
+        self.assertEqual(usd_row.base_currency, "EUR")
+        self.assertEqual(usd_row.rate, Decimal("1.1"))
+
+        metadata = SyncMetadata.get_singleton()
+        self.assertEqual(metadata.last_successful_sync_date, date.today())
+        self.assertEqual(
+            metadata.supported_currencies,
+            {
+                "EUR": "Euro",
+                "USD": "US Dollar",
+                "CZK": "Czech Koruna",
+            },
+        )
+
+    def test_cross_derivation_from_stored_eur_rates(self):
+        self._seed_today_rates({"USD": Decimal("1.1"), "CZK": Decimal("25.0")})
+
+        result = get_rate("USD", "CZK")
+
+        self.assertEqual(result, Decimal("25.0") / Decimal("1.1"))
 
     @patch("financetracker.services.currency.requests.get")
     def test_same_currency_conversion_returns_amount_without_http(self, mock_get):
@@ -27,61 +84,42 @@ class CurrencyServiceTests(TestCase):
         self.assertEqual(result, Decimal("100"))
         mock_get.assert_not_called()
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_convert_with_mocked_rate_returns_full_precision_product(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.123}
-        mock_get.return_value = mock_response
+    def test_convert_with_stored_rate_returns_full_precision_product(self):
+        self._seed_today_rates({"CZK": Decimal("25.123")})
 
         result = convert(Decimal("100"), "EUR", "CZK")
 
         self.assertEqual(result, Decimal("100") * Decimal("25.123"))
-        mock_get.assert_called_once()
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_cache_hit_avoids_second_http_request(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.0}
-        mock_get.return_value = mock_response
+    def test_second_get_rate_for_same_pair_does_not_invoke_http(self):
+        self._seed_today_rates({"CZK": Decimal("25.0")})
 
-        first = get_rate("EUR", "CZK")
-        second = get_rate("EUR", "CZK")
+        with patch("financetracker.services.currency.requests.get") as mock_get:
+            first = get_rate("EUR", "CZK")
+            second = get_rate("EUR", "CZK")
 
         self.assertEqual(first, Decimal("25.0"))
         self.assertEqual(second, Decimal("25.0"))
-        mock_get.assert_called_once()
+        mock_get.assert_not_called()
 
     @patch("financetracker.services.currency.requests.get")
-    def test_api_failure_raises_currency_conversion_error(self, mock_get):
-        mock_get.side_effect = requests.RequestException("network down")
-
+    def test_missing_stored_rate_raises_currency_conversion_error(self, mock_get):
         with self.assertRaises(CurrencyConversionError):
             get_rate("EUR", "CZK")
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_malformed_response_raises_currency_conversion_error(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {}
-        mock_get.return_value = mock_response
+        mock_get.assert_not_called()
 
-        with self.assertRaises(CurrencyConversionError):
-            get_rate("EUR", "CZK")
+    def test_same_currency_latest_rate_returns_one_without_http_or_db(self):
+        with patch("financetracker.services.currency.requests.get") as mock_get:
+            result = get_rate("EUR", "EUR")
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_mixed_case_currency_codes_normalized(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.0}
-        mock_get.return_value = mock_response
+        self.assertEqual(result, Decimal("1"))
+        mock_get.assert_not_called()
+
+    def test_mixed_case_currency_codes_normalized(self):
+        self._seed_today_rates({"CZK": Decimal("25.0")})
 
         mixed = get_rate("eur", "czk")
-        cache.clear()
-        mock_get.reset_mock()
-        mock_get.return_value = mock_response
-
         upper = get_rate("EUR", "CZK")
 
         self.assertEqual(mixed, upper)
@@ -93,8 +131,22 @@ class CurrencyServiceTests(TestCase):
 
         mock_get.assert_not_called()
 
+    def test_get_supported_currencies_reads_from_metadata_without_http(self):
+        metadata = SyncMetadata.get_singleton()
+        metadata.supported_currencies = {
+            "EUR": "Euro",
+            "CZK": "Czech Koruna",
+        }
+        metadata.save()
+
+        with patch("financetracker.services.currency.requests.get") as mock_get:
+            result = get_supported_currencies()
+
+        self.assertEqual(result, {"EUR": "Euro", "CZK": "Czech Koruna"})
+        mock_get.assert_not_called()
+
     @patch("financetracker.services.currency.requests.get")
-    def test_get_supported_currencies_returns_code_name_mapping(self, mock_get):
+    def test_get_supported_currencies_falls_back_to_api_when_metadata_empty(self, mock_get):
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = [
@@ -106,17 +158,6 @@ class CurrencyServiceTests(TestCase):
         result = get_supported_currencies()
 
         self.assertEqual(result, {"EUR": "Euro", "CZK": "Czech Koruna"})
-
-    @patch("financetracker.services.currency.requests.get")
-    def test_supported_currencies_cache_hit_avoids_second_http_request(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = [{"iso_code": "EUR", "name": "Euro"}]
-        mock_get.return_value = mock_response
-
-        get_supported_currencies()
-        get_supported_currencies()
-
         mock_get.assert_called_once()
 
     @patch("financetracker.services.currency.requests.get")
@@ -140,7 +181,7 @@ class CurrencyServiceTests(TestCase):
         self.assertEqual(result, Decimal("25.5"))
         mock_get.assert_called_once_with(
             f"https://api.frankfurter.dev/v2/rate/EUR/CZK/{past_date.isoformat()}",
-            timeout=10,
+            timeout=3,
         )
 
     @patch("financetracker.services.currency.requests.get")
@@ -184,38 +225,24 @@ class CurrencyServiceTests(TestCase):
             mock_get.call_args_list[1].args[0],
         )
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_future_date_uses_latest_endpoint(self, mock_get):
+    def test_future_date_uses_stored_latest_rate(self):
         future_date = date.today() + timedelta(days=5)
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.0}
-        mock_get.return_value = mock_response
+        self._seed_today_rates({"CZK": Decimal("25.0")})
 
-        result = get_rate("EUR", "CZK", on_date=future_date)
+        with patch("financetracker.services.currency.requests.get") as mock_get:
+            result = get_rate("EUR", "CZK", on_date=future_date)
 
         self.assertEqual(result, Decimal("25.0"))
-        mock_get.assert_called_once_with(
-            "https://api.frankfurter.dev/v2/rate/EUR/CZK",
-            timeout=10,
-        )
+        mock_get.assert_not_called()
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_today_date_uses_latest_endpoint(self, mock_get):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.0}
-        mock_get.return_value = mock_response
+    def test_today_date_uses_stored_latest_rate(self):
+        self._seed_today_rates({"CZK": Decimal("25.0")})
 
-        result = get_rate("EUR", "CZK", on_date=date.today())
+        with patch("financetracker.services.currency.requests.get") as mock_get:
+            result = get_rate("EUR", "CZK", on_date=date.today())
 
         self.assertEqual(result, Decimal("25.0"))
-        mock_get.assert_called_once_with(
-            "https://api.frankfurter.dev/v2/rate/EUR/CZK",
-            timeout=10,
-        )
+        mock_get.assert_not_called()
 
     @patch("financetracker.services.currency.cache.set")
     @patch("financetracker.services.currency.requests.get")
@@ -233,23 +260,6 @@ class CurrencyServiceTests(TestCase):
             f"currency_rate_EUR_CZK_{past_date.isoformat()}",
             "25.0",
             PAST_RATE_CACHE_TTL_SECONDS,
-        )
-
-    @patch("financetracker.services.currency.cache.set")
-    @patch("financetracker.services.currency.requests.get")
-    def test_latest_rate_cached_with_pair_key_and_24h_ttl(self, mock_get, mock_cache_set):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = {"rate": 25.0}
-        mock_get.return_value = mock_response
-
-        get_rate("EUR", "CZK")
-
-        mock_cache_set.assert_called_once_with(
-            "currency_rate_EUR_CZK",
-            "25.0",
-            RATE_CACHE_TTL_SECONDS,
         )
 
     @patch("financetracker.services.currency.requests.get")
