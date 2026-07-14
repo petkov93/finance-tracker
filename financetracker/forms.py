@@ -68,12 +68,16 @@ class RegistrationForm(UserCreationForm):
 
 
 class DefaultCurrencyForm(forms.ModelForm):
+    default_currency = forms.ChoiceField(
+        choices=[],
+        required=True,
+        label="Currency",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
     class Meta:
         model = UserProfile
         fields = ["default_currency"]
-        widgets = {
-            "default_currency": forms.Select(attrs={"class": "form-select"}),
-        }
 
     def __init__(self, *args, currency_choices=None, **kwargs):
         super().__init__(*args, **kwargs)

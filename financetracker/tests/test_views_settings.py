@@ -90,6 +90,13 @@ class SettingsViewsTests(TestCase):
         self.assertEqual(response.context["transaction_count"], 1)
         self.assertEqual(response.context["investment_count"], 1)
 
+    def test_settings_currency_dropdown_lists_supported_currencies(self):
+        response = self.client.get(reverse("settings"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<option value="CZK"')
+        self.assertContains(response, '<option value="EUR"')
+        self.assertContains(response, '<option value="USD"')
+
     def test_default_currency_update(self):
         response = self.client.post(
             reverse("settings"),
