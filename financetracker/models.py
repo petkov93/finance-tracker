@@ -33,6 +33,7 @@ class ExchangeRate(models.Model):
 
 class SyncMetadata(models.Model):
     last_successful_sync_date = models.DateField(null=True, blank=True)
+    sync_in_progress = models.BooleanField(default=False)
     supported_currencies = models.JSONField(default=dict)
 
     @classmethod

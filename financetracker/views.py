@@ -131,6 +131,7 @@ def dashboard(request):
         "balance": display.balance,
         "default_currency": display.default_currency,
         "conversion_degraded": display.conversion_degraded,
+        "rates_stale_date": display.rates_stale_date,
     })
 
 
@@ -385,6 +386,7 @@ def statistics(request):
         "to_date":            to_date.isoformat(),
         "default_currency":   display.default_currency,
         "conversion_degraded": display.conversion_degraded,
+        "rates_stale_date": display.rates_stale_date,
     })
 
 
@@ -587,12 +589,15 @@ def _quantize_rate(value):
     return value.quantize(Decimal("0.0001"))
 
 
-def _rate_json(from_currency, to_currency, rate):
-    return {
+def _rate_json(from_currency, to_currency, rate, *, stale_date=None):
+    payload = {
         "from": from_currency,
         "to": to_currency,
         "rate": format(_quantize_rate(rate), "f"),
     }
+    if stale_date is not None:
+        payload["rates_stale_date"] = stale_date.isoformat()
+    return payload
 
 
 def _validate_api_currencies(from_currency, to_currency, supported):
@@ -636,14 +641,21 @@ def converter_rate_api(request):
     from_currency, to_currency = pair
 
     try:
-        rate = get_rate(from_currency, to_currency)
+        rate_result = get_rate(from_currency, to_currency)
     except CurrencyConversionError:
         return JsonResponse(
             {"error": "Couldn't fetch the exchange rate right now."},
             status=503,
         )
 
-    return JsonResponse(_rate_json(from_currency, to_currency, rate))
+    return JsonResponse(
+        _rate_json(
+            from_currency,
+            to_currency,
+            rate_result.rate,
+            stale_date=rate_result.stale_date,
+        )
+    )
 
 
 @login_required
@@ -679,7 +691,7 @@ def converter_convert_api(request):
         return error_response
 
     try:
-        rate = get_rate(from_currency, to_currency)
+        rate_result = get_rate(from_currency, to_currency)
         result = convert(amount, from_currency, to_currency)
     except CurrencyConversionError:
         return JsonResponse(
@@ -690,7 +702,12 @@ def converter_convert_api(request):
     request.session[SESSION_FROM_KEY] = from_currency
     request.session[SESSION_TO_KEY] = to_currency
 
-    payload = _rate_json(from_currency, to_currency, rate)
+    payload = _rate_json(
+        from_currency,
+        to_currency,
+        rate_result.rate,
+        stale_date=rate_result.stale_date,
+    )
     payload["converted_amount"] = format(_quantize_money(result), "f")
     return JsonResponse(payload)
 
@@ -728,10 +745,13 @@ def currency_converter(request):
     )
 
     rate = None
+    rates_stale_date = None
     rate_error = False
 
     try:
-        rate = get_rate(from_currency, to_currency)
+        rate_result = get_rate(from_currency, to_currency)
+        rate = rate_result.rate
+        rates_stale_date = rate_result.stale_date
     except CurrencyConversionError:
         rate_error = True
 
@@ -752,5 +772,6 @@ def currency_converter(request):
             "to_currency": to_currency,
             "rate": rate,
             "rate_error": rate_error,
+            "rates_stale_date": rates_stale_date,
         },
     )

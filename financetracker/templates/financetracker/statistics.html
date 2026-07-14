@@ -16,6 +16,12 @@
       Exchange rates are unavailable right now. Totals and charts are hidden until rates return.
     </div>
   </div>
+{% elif rates_stale_date %}
+  <div class="alerts animate-in animate-in-delay-1">
+    <div class="alert info" role="status">
+      Exchange rates from {{ rates_stale_date|date:"Y-m-d" }} — live rates temporarily unavailable.
+    </div>
+  </div>
 {% endif %}
 
 {% if not conversion_degraded %}

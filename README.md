@@ -68,9 +68,9 @@ finance-tracker/
 │   ├── migrations/
 │   ├── static/financetracker/css/
 │   ├── templates/financetracker/
-│   ├── models.py           # Category, Transaction, InvestmentEntry, UserProfile
+│   ├── models.py           # Category, Transaction, InvestmentEntry, UserProfile, ExchangeRate
 │   ├── services/
-│   │   ├── currency.py           # Frankfurter rates, convert, supported currencies
+│   │   ├── currency.py           # Frankfurter rates, DB persistence, sync, convert
 │   │   └── display_conversion.py # Batch display conversion for dashboard/statistics
 │   ├── views.py
 │   ├── forms.py
@@ -189,11 +189,12 @@ Dashboard and statistics do **not** sum raw `amount` values across mixed currenc
 
 - **Same currency** as default: one formatted amount, no footnote.
 - **Different currency**: primary amount in default currency; secondary footnote shows the original native amount.
-- **Degraded mode**: if today's rate cannot be fetched (Frankfurter unavailable and no cache), converted totals are omitted, rows show native amounts, and a warning banner is shown. Past-date rates served from cache continue to work silently.
+- **Degraded mode**: if no usable exchange rate exists at all (no stored snapshot and Frankfurter unreachable), converted totals are omitted, rows show native amounts, and a warning banner is shown.
+- **Stale rates**: when today's live sync failed but an earlier stored snapshot exists, totals and charts still render using those rates and an info banner shows the snapshot date.
 
 ### Exchange-rate policy
 
-Rates come from the [Frankfurter API](https://frankfurter.dev). The currency service (`financetracker/services/currency.py`) applies:
+Rates come from the [Frankfurter API](https://frankfurter.dev) and are **persisted in the database** (`ExchangeRate` table, EUR-base snapshots). The currency service (`financetracker/services/currency.py`) applies:
 
 | Transaction date | Rate used |
 |------------------|-----------|
@@ -204,19 +205,21 @@ Rates come from the [Frankfurter API](https://frankfurter.dev). The currency ser
 
 **Weekends and holidays:** when Frankfurter has no published rate for the exact date, the service walks back up to seven days to the nearest prior published rate. No rate-date hint is shown in the UI.
 
+**Startup sync:** when the app boots (after migrations are available), it bulk-fetches today's rates if `last_successful_sync_date` is before today. A database-backed lock prevents multiple Gunicorn workers from double-fetching on wake. Sync failures are logged and do not block boot — stale stored rates continue to serve traffic.
+
+**Read-time refresh:** the first latest-rate lookup also triggers sync when today's snapshot is stale, covering long-lived processes without a separate cron job.
+
+**Stale fallback:** when Frankfurter is unreachable but an earlier snapshot exists, `get_rate` returns the most recent stored rate and carries the snapshot date as stale metadata. Dashboard, statistics, and the converter show an info banner; totals remain visible.
+
+**Manual sync:**
+
+```bash
+python manage.py sync_exchange_rates
+```
+
 **Converter page:** always uses latest rates only (`get_rate` without a date). It does not use transaction-date historical lookups.
 
-### Caching
-
-Django's cache backend stores fetched rates to limit API usage:
-
-| Rate type | Cache key | TTL |
-|-----------|-----------|-----|
-| Latest / today | `currency_rate_{FROM}_{TO}` | 24 hours |
-| Past date | `currency_rate_{FROM}_{TO}_{YYYY-MM-DD}` | ~10 years (effectively immutable) |
-| Supported currency list | `currency_supported_currencies` | 24 hours |
-
-Past rates are treated as immutable once cached. There is no database-backed rate table in this version.
+There is **no in-memory rate cache** — the database is the sole durable cache layer.
 
 ---
 
@@ -276,6 +279,7 @@ Health check: `GET /health/` → `{"status": "ok"}`
 ```bash
 python manage.py migrate
 python manage.py seed_categories
+python manage.py sync_exchange_rates
 python manage.py collectstatic --noinput
 python manage.py createsuperuser
 python manage.py runserver

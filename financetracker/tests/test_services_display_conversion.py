@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from financetracker.models import ExchangeRate
-from financetracker.services.currency import CurrencyConversionError
+from financetracker.services.currency import CurrencyConversionError, RateResult
 from financetracker.services.display_conversion import convert_for_display
 from financetracker.tests.factories import create_transaction, create_user
 
@@ -43,7 +43,7 @@ class DisplayConversionTests(TestCase):
 
         with patch(
             "financetracker.services.display_conversion.get_rate",
-            side_effect=lambda f, t, on_date=None: rates[(f, t, on_date)],
+            side_effect=lambda f, t, on_date=None: RateResult(rate=rates[(f, t, on_date)]),
         ):
             result = convert_for_display([transaction], "CZK")
 
@@ -54,13 +54,14 @@ class DisplayConversionTests(TestCase):
         self.assertEqual(row.native_currency, "EUR")
         self.assertTrue(row.show_native_footnote)
         self.assertFalse(result.conversion_degraded)
+        self.assertIsNone(result.rates_stale_date)
 
     @patch("financetracker.services.display_conversion.ensure_rate_snapshots")
     @patch("financetracker.services.display_conversion.get_rate")
     def test_batches_unique_pair_date_rate_lookups(self, mock_get_rate, _mock_ensure):
         past = date.today() - timedelta(days=3)
         other_past = date.today() - timedelta(days=5)
-        mock_get_rate.return_value = Decimal("25.00")
+        mock_get_rate.return_value = RateResult(rate=Decimal("25.00"))
 
         transactions = [
             create_transaction(
@@ -112,7 +113,7 @@ class DisplayConversionTests(TestCase):
 
         with patch(
             "financetracker.services.display_conversion.get_rate",
-            side_effect=lambda f, t, on_date=None: rates[(f, t, on_date)],
+            side_effect=lambda f, t, on_date=None: RateResult(rate=rates[(f, t, on_date)]),
         ):
             result = convert_for_display(
                 [income, expense],
@@ -151,6 +152,61 @@ class DisplayConversionTests(TestCase):
         self.assertIsNone(result.total_income)
         self.assertIsNone(result.total_expense)
         self.assertIsNone(result.balance)
+        self.assertIsNone(result.rates_stale_date)
+
+    def test_stale_rates_compute_totals_and_set_stale_date(self):
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        transaction = create_transaction(
+            self.user,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            type="income",
+            transaction_date=today,
+        )
+
+        with patch(
+            "financetracker.services.display_conversion.get_rate",
+            return_value=RateResult(rate=Decimal("25.00"), stale_date=yesterday),
+        ):
+            result = convert_for_display(
+                [transaction],
+                "CZK",
+                totals_transactions=[transaction],
+            )
+
+        self.assertFalse(result.conversion_degraded)
+        self.assertEqual(result.rates_stale_date, yesterday)
+        self.assertEqual(result.total_income, Decimal("250.00"))
+        self.assertEqual(result.total_expense, Decimal("0"))
+        self.assertEqual(result.balance, Decimal("250.00"))
+        row = result.rows[0]
+        self.assertEqual(row.primary_amount, Decimal("250.00"))
+        self.assertEqual(row.primary_currency, "CZK")
+        self.assertTrue(row.show_native_footnote)
+
+    def test_no_rate_at_all_sets_degraded_without_stale_date(self):
+        today = date.today()
+        transaction = create_transaction(
+            self.user,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            transaction_date=today,
+        )
+
+        with patch(
+            "financetracker.services.display_conversion.get_rate",
+            side_effect=CurrencyConversionError("no rate"),
+        ):
+            result = convert_for_display(
+                [transaction],
+                "CZK",
+                totals_transactions=[transaction],
+            )
+
+        self.assertTrue(result.conversion_degraded)
+        self.assertIsNone(result.rates_stale_date)
+        self.assertIsNone(result.total_income)
 
     @patch("financetracker.services.currency.requests.get")
     def test_historical_snapshot_fetch_failure_does_not_crash_display(self, mock_get):
@@ -193,7 +249,7 @@ class DisplayConversionTests(TestCase):
         def fake_get_rate(from_currency, to_currency, on_date=None):
             if from_currency == "USD":
                 raise CurrencyConversionError("no historical rate")
-            return Decimal("25.00")
+            return RateResult(rate=Decimal("25.00"), stale_date=None)
 
         with patch(
             "financetracker.services.display_conversion.ensure_rate_snapshots",

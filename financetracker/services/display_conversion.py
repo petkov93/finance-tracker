@@ -28,6 +28,7 @@ class DisplayConversionResult:
     total_expense: Decimal | None
     balance: Decimal | None
     conversion_degraded: bool
+    rates_stale_date: date | None
     default_currency: str
 
 
@@ -60,24 +61,32 @@ def _prefetch_rate_snapshots(keys: set[tuple[str, str, date]]) -> None:
 
 def _fetch_rates(
     keys: set[tuple[str, str, date]],
-) -> tuple[dict[tuple[str, str, date], Decimal], bool]:
+) -> tuple[dict[tuple[str, str, date], Decimal], bool, date | None]:
     _prefetch_rate_snapshots(keys)
 
     rates: dict[tuple[str, str, date], Decimal] = {}
     conversion_degraded = False
+    rates_stale_date: date | None = None
 
     for from_currency, to_currency, on_date in keys:
         try:
-            rates[(from_currency, to_currency, on_date)] = get_rate(
+            result = get_rate(
                 from_currency,
                 to_currency,
                 on_date=on_date,
             )
+            rates[(from_currency, to_currency, on_date)] = result.rate
+            if result.stale_date is not None and _requires_today_rate(on_date):
+                rates_stale_date = (
+                    max(rates_stale_date, result.stale_date)
+                    if rates_stale_date is not None
+                    else result.stale_date
+                )
         except CurrencyConversionError:
             if _requires_today_rate(on_date):
                 conversion_degraded = True
 
-    return rates, conversion_degraded
+    return rates, conversion_degraded, rates_stale_date
 
 
 def _converted_amount(
@@ -160,7 +169,7 @@ def convert_for_display(
         totals_source,
         default_currency,
     )
-    rates, conversion_degraded = _fetch_rates(rate_keys)
+    rates, conversion_degraded, rates_stale_date = _fetch_rates(rate_keys)
 
     rows = [
         _build_row(transaction, default_currency, rates, degraded=conversion_degraded)
@@ -174,6 +183,7 @@ def convert_for_display(
             total_expense=None,
             balance=None,
             conversion_degraded=True,
+            rates_stale_date=None,
             default_currency=default_currency,
         )
 
@@ -194,5 +204,6 @@ def convert_for_display(
         total_expense=total_expense,
         balance=total_income - total_expense,
         conversion_degraded=False,
+        rates_stale_date=rates_stale_date,
         default_currency=default_currency,
     )
