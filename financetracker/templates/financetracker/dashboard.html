@@ -10,10 +10,19 @@
   <a href="{% url 'add_transaction' %}" class="btn btn-primary">+ Add transaction</a>
 </div>
 
+{% if conversion_degraded %}
+  <div class="alerts animate-in animate-in-delay-1">
+    <div class="alert warning" role="status">
+      Exchange rates are unavailable right now. Amounts are shown in each transaction's original currency and totals are hidden.
+    </div>
+  </div>
+{% endif %}
+
+{% if not conversion_degraded %}
 <div class="hero-stats animate-in animate-in-delay-1">
   <div class="hero-balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
     <span class="summary-label">Balance</span>
-    <span class="hero-amount">{{ balance|floatformat:2 }} <small>CZK</small></span>
+    <span class="hero-amount">{{ balance|floatformat:2 }} <small>{{ default_currency }}</small></span>
     <span class="summary-sub">income minus expenses</span>
   </div>
   <div class="hero-secondary">
@@ -29,6 +38,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <section class="section animate-in animate-in-delay-2">
   <div class="section-header">
@@ -66,9 +76,10 @@
     </form>
   </details>
 
-  {% if transactions %}
+  {% if display_transactions %}
     <div class="transaction-list">
-      {% for t in transactions %}
+      {% for row in display_transactions %}
+        {% with t=row.transaction %}
         <div class="transaction-row">
           <div class="transaction-left">
             <div class="transaction-icon {% if t.type == 'income' %}icon-income{% else %}icon-expense{% endif %}">
@@ -84,8 +95,13 @@
           </div>
           <div class="transaction-right">
             <div class="transaction-amount {% if t.type == 'income' %}amount-income{% else %}amount-expense{% endif %}">
-              {% if t.type == 'income' %}+{% else %}−{% endif %}{{ t.amount|floatformat:2 }} CZK
+              {% if t.type == 'income' %}+{% else %}−{% endif %}{{ row.primary_amount|floatformat:2 }} {{ row.primary_currency }}
             </div>
+            {% if row.show_native_footnote %}
+              <div class="transaction-amount-footnote">
+                {% if t.type == 'income' %}+{% else %}−{% endif %}{{ row.native_amount|floatformat:2 }} {{ row.native_currency }}
+              </div>
+            {% endif %}
             <div class="transaction-actions">
               <a href="{% url 'edit_transaction' t.pk %}" class="action-link edit">Edit</a>
               <form method="post" action="{% url 'delete_transaction' t.pk %}" class="inline-form" onsubmit="return confirm('Delete this transaction?')">
@@ -95,6 +111,7 @@
             </div>
           </div>
         </div>
+        {% endwith %}
       {% endfor %}
     </div>
   {% else %}

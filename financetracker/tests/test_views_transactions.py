@@ -1,10 +1,12 @@
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from financetracker.models import Transaction, ensure_user_profile
+from financetracker.models import Transaction, UserProfile, ensure_user_profile
+from financetracker.services.currency import CurrencyConversionError
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_category,
@@ -96,8 +98,8 @@ class TransactionViewsTests(TestCase):
         create_transaction(self.user, category=transport, description="Bus")
 
         response = self.client.get(reverse("dashboard"), {"category": food.pk})
-        transactions = list(response.context["transactions"])
-        self.assertEqual(transactions, [food_tx])
+        rows = list(response.context["display_transactions"])
+        self.assertEqual([row.transaction for row in rows], [food_tx])
 
     def test_dashboard_search_filter(self):
         food = create_category(name="Food")
@@ -105,8 +107,116 @@ class TransactionViewsTests(TestCase):
         create_transaction(self.user, description="Rent payment")
 
         response = self.client.get(reverse("dashboard"), {"q": "food"})
-        transactions = list(response.context["transactions"])
-        self.assertEqual(transactions, [matching])
+        rows = list(response.context["display_transactions"])
+        self.assertEqual([row.transaction for row in rows], [matching])
+
+    def test_dashboard_converted_totals_with_mixed_currencies(self):
+        past = date.today() - timedelta(days=7)
+        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        create_transaction(
+            self.user,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            type=Transaction.INCOME,
+            transaction_date=past,
+        )
+        create_transaction(
+            self.user,
+            amount=Decimal("100.00"),
+            currency="CZK",
+            type=Transaction.EXPENSE,
+            transaction_date=past,
+        )
+
+        with patch(
+            "financetracker.services.display_conversion.get_rate",
+            return_value=Decimal("25.00"),
+        ):
+            response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.context["total_income"], Decimal("250.00"))
+        self.assertEqual(response.context["total_expense"], Decimal("100.00"))
+        self.assertEqual(response.context["balance"], Decimal("150.00"))
+
+    def test_dashboard_dual_amount_display_for_foreign_currency(self):
+        past = date.today() - timedelta(days=7)
+        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        create_transaction(
+            self.user,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            transaction_date=past,
+        )
+
+        with patch(
+            "financetracker.services.display_conversion.get_rate",
+            return_value=Decimal("25.00"),
+        ):
+            response = self.client.get(reverse("dashboard"))
+
+        self.assertContains(response, "250.00 CZK")
+        self.assertContains(response, "10.00 EUR")
+        self.assertContains(response, "transaction-amount-footnote")
+
+    def test_dashboard_single_amount_display_for_same_currency(self):
+        create_transaction(self.user, amount=Decimal("100.00"), currency="CZK")
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertContains(response, "100.00 CZK")
+        self.assertNotContains(response, "transaction-amount-footnote")
+
+    def test_dashboard_filter_applies_before_conversion(self):
+        food = create_category(name="Food")
+        past = date.today() - timedelta(days=7)
+        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        food_tx = create_transaction(
+            self.user,
+            category=food,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            description="Groceries",
+            transaction_date=past,
+        )
+        create_transaction(
+            self.user,
+            amount=Decimal("50.00"),
+            currency="EUR",
+            description="Rent",
+            transaction_date=past,
+        )
+
+        with patch(
+            "financetracker.services.display_conversion.get_rate",
+            return_value=Decimal("25.00"),
+        ):
+            response = self.client.get(reverse("dashboard"), {"category": food.pk})
+
+        rows = list(response.context["display_transactions"])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].transaction, food_tx)
+        self.assertEqual(rows[0].primary_amount, Decimal("250.00"))
+
+    def test_dashboard_degradation_shows_warning_and_native_amounts(self):
+        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        create_transaction(
+            self.user,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            transaction_date=date.today(),
+        )
+
+        with patch(
+            "financetracker.services.display_conversion.get_rate",
+            side_effect=CurrencyConversionError("network down"),
+        ):
+            response = self.client.get(reverse("dashboard"))
+
+        self.assertTrue(response.context["conversion_degraded"])
+        self.assertIsNone(response.context["balance"])
+        self.assertContains(response, "Exchange rates are unavailable")
+        self.assertContains(response, "10.00 EUR")
+        self.assertNotContains(response, "hero-stats")
 
     def test_user_cannot_edit_other_users_transaction(self):
         other_transaction = create_transaction(self.other_user)

@@ -30,6 +30,7 @@ from .services.currency import (
     get_rate,
     get_supported_currencies,
 )
+from .services.display_conversion import convert_for_display
 
 
 def login_view(request):
@@ -113,23 +114,24 @@ def dashboard(request):
     if q_query:
         qs = qs.filter(Q(description__icontains=q_query) | Q(category__name__icontains=q_query))
     
-    transactions = qs
-    totals = Transaction.objects.filter(user=request.user).aggregate(
-        total_income=Sum("amount", filter=Q(type="income")),
-        total_expense=Sum("amount", filter=Q(type="expense")),
+    profile = ensure_user_profile(request.user)
+    all_transactions = Transaction.objects.filter(user=request.user)
+    display = convert_for_display(
+        qs,
+        profile.default_currency,
+        totals_transactions=all_transactions,
     )
-    total_income = totals["total_income"] or Decimal("0")
-    total_expense = totals["total_expense"] or Decimal("0")
-    balance = total_income - total_expense
 
     return render(request, "financetracker/dashboard.html", {
-        "transactions": transactions,
+        "display_transactions": display.rows,
         "all_categories": all_categories,
         "selected_category": category_id,
         "q_query": q_query,
-        "total_income": total_income,
-        "total_expense": total_expense,
-        "balance": balance,
+        "total_income": display.total_income,
+        "total_expense": display.total_expense,
+        "balance": display.balance,
+        "default_currency": display.default_currency,
+        "conversion_degraded": display.conversion_degraded,
     })
 
 

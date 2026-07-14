@@ -360,6 +360,14 @@ body.sidebar-collapsed .sidebar-link.active::before {
 
 .alert.success { border-left-color: var(--income); }
 .alert.error   { border-left-color: var(--expense); }
+.alert.warning { border-left-color: #d97706; }
+
+.transaction-amount-footnote {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
 
 /* ===== Typography / page chrome ===== */
 .page-header {
