@@ -38,6 +38,31 @@
 
   <section class="settings-section">
     <div class="form-card">
+      <h2 class="settings-section-title">Default currency</h2>
+      <p class="settings-section-desc">Amounts on the dashboard and statistics will display in this currency.</p>
+      {% if currency_error %}
+        <p class="form-error">Couldn't load supported currencies right now. Try again in a moment.</p>
+      {% elif currency_form %}
+        <form method="post" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="action" value="currency" />
+
+          <div class="form-group">
+            <label class="form-label" for="{{ currency_form.default_currency.id_for_label }}">Currency</label>
+            {{ currency_form.default_currency }}
+            {% if currency_form.default_currency.errors %}<div class="form-error">{{ currency_form.default_currency.errors.0 }}</div>{% endif %}
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Save currency</button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="settings-section">
+    <div class="form-card">
       <h2 class="settings-section-title">Change password</h2>
       <form method="post" novalidate>
         {% csrf_token %}

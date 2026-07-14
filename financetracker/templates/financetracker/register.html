@@ -1,4 +1,5 @@
 {% extends "financetracker/base.html" %}
+{% load static %}
 {% block title %}Sign Up — Finance Tracker{% endblock %}
 
 {% block content %}
@@ -24,27 +25,35 @@
         <p class="auth-sub">Start tracking your finances today</p>
       </div>
 
-      <form method="post" novalidate>
-        {% csrf_token %}
-        {% for field in form %}
-          <div class="form-group">
-            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            <input type="{{ field.field.widget.input_type }}"
-                   name="{{ field.html_name }}"
-                   id="{{ field.id_for_label }}"
-                   class="form-control"
-                   placeholder="{{ field.label }}"
-                   {% if field.value %}value="{{ field.value }}"{% endif %} />
-            {% if field.errors %}
-              <div class="form-error">{{ field.errors.0 }}</div>
-            {% endif %}
-            {% if field.help_text %}
-              <div class="form-hint">{{ field.help_text }}</div>
-            {% endif %}
-          </div>
-        {% endfor %}
-        <button type="submit" class="btn btn-primary btn-full">Create account</button>
-      </form>
+      {% if currency_error %}
+        <p class="form-error">Couldn't load supported currencies right now. Try again in a moment.</p>
+      {% elif form %}
+        <form method="post" novalidate>
+          {% csrf_token %}
+          {% for field in form %}
+            <div class="form-group">
+              <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {% if field.field.widget.input_type %}
+                <input type="{{ field.field.widget.input_type }}"
+                       name="{{ field.html_name }}"
+                       id="{{ field.id_for_label }}"
+                       class="form-control"
+                       placeholder="{{ field.label }}"
+                       {% if field.value %}value="{{ field.value }}"{% endif %} />
+              {% else %}
+                {{ field }}
+              {% endif %}
+              {% if field.errors %}
+                <div class="form-error">{{ field.errors.0 }}</div>
+              {% endif %}
+              {% if field.help_text %}
+                <div class="form-hint">{{ field.help_text }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-primary btn-full">Create account</button>
+        </form>
+      {% endif %}
 
       <p class="auth-footer">
         Already have an account? <a href="{% url 'login' %}" class="auth-link">Log in</a>
@@ -52,4 +61,10 @@
     </div>
   </div>
 </div>
+{% if form and supported_currency_codes_json %}
+  <script>
+    window.FINANCE_TRACKER_SUPPORTED_CURRENCIES = {{ supported_currency_codes_json|safe }};
+  </script>
+  <script src="{% static 'financetracker/js/register.js' %}"></script>
+{% endif %}
 {% endblock %}

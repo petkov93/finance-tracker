@@ -1,15 +1,18 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from financetracker.models import InvestmentEntry, Transaction
+from financetracker.models import InvestmentEntry, Transaction, UserProfile, ensure_user_profile
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_investment,
     create_transaction,
     create_user,
 )
+
+SUPPORTED = {"CZK": "Czech Koruna", "EUR": "Euro", "USD": "US Dollar"}
 
 
 class SettingsViewsTests(TestCase):
@@ -18,6 +21,14 @@ class SettingsViewsTests(TestCase):
         self.user = create_user(username="alice", email="alice@example.com")
         self.other_user = create_user(username="bob")
         self.client.login(username=self.user.username, password=DEFAULT_PASSWORD)
+        self.supported_patcher = patch(
+            "financetracker.views.get_supported_currencies",
+            return_value=SUPPORTED.copy(),
+        )
+        self.supported_patcher.start()
+        self.addCleanup(self.supported_patcher.stop)
+        ensure_user_profile(self.user)
+        ensure_user_profile(self.other_user)
 
     def test_settings_requires_login(self):
         self.client.logout()
@@ -78,3 +89,24 @@ class SettingsViewsTests(TestCase):
         response = self.client.get(reverse("settings"))
         self.assertEqual(response.context["transaction_count"], 1)
         self.assertEqual(response.context["investment_count"], 1)
+
+    def test_default_currency_update(self):
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "currency",
+                "default_currency": "USD",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertEqual(profile.default_currency, "USD")
+        self.assertContains(response, "Default currency updated.")
+
+    def test_settings_lazy_creates_profile_for_user_without_one(self):
+        UserProfile.objects.filter(user=self.user).delete()
+        response = self.client.get(reverse("settings"))
+        self.assertEqual(response.status_code, 200)
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertEqual(profile.default_currency, "CZK")

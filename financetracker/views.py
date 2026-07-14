@@ -5,20 +5,24 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm
+from django.db import transaction
 from django.db.models import Q, Sum
 from django.db.models.functions import TruncMonth
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
-from .models import Transaction, Category, InvestmentEntry
+from .models import Transaction, Category, InvestmentEntry, UserProfile, ensure_user_profile
 from .forms import (
     CurrencyConverterForm,
     CustomPasswordChangeForm,
+    DefaultCurrencyForm,
     InvestmentEntryForm,
     ProfileForm,
+    RegistrationForm,
     TransactionForm,
+    build_currency_choices,
 )
 from .services.currency import (
     CurrencyConversionError,
@@ -34,7 +38,9 @@ def login_view(request):
     if request.method == "POST":
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
-            login(request, form.get_user())
+            user = form.get_user()
+            ensure_user_profile(user)
+            login(request, user)
             return redirect(request.GET.get("next", "dashboard"))
         messages.error(request, "Invalid username or password.")
     else:
@@ -51,16 +57,46 @@ def logout_view(request):
 def register_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
+
+    try:
+        supported = get_supported_currencies()
+    except CurrencyConversionError:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/register.html",
+            {"form": None, "currency_error": True},
+            status=200,
+        )
+
+    currency_choices = build_currency_choices(supported)
+
     if request.method == "POST":
-        form = UserCreationForm(request.POST)
+        form = RegistrationForm(request.POST, currency_choices=currency_choices)
         if form.is_valid():
-            user = form.save()
+            with transaction.atomic():
+                user = form.save()
+                UserProfile.objects.create(
+                    user=user,
+                    default_currency=form.cleaned_data["default_currency"],
+                )
             login(request, user)
             messages.success(request, f"Welcome, {user.username}! Your account has been created.")
             return redirect("dashboard")
     else:
-        form = UserCreationForm()
-    return render(request, "financetracker/register.html", {"form": form})
+        form = RegistrationForm(currency_choices=currency_choices)
+
+    return render(
+        request,
+        "financetracker/register.html",
+        {
+            "form": form,
+            "supported_currency_codes_json": json.dumps(sorted(supported.keys())),
+        },
+    )
 
 
 @login_required
@@ -318,8 +354,32 @@ def delete_investment(request, pk):
 
 @login_required
 def settings_view(request):
+    profile = ensure_user_profile(request.user)
+    try:
+        supported = get_supported_currencies()
+    except CurrencyConversionError:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/settings.html",
+            {
+                "profile_form": ProfileForm(instance=request.user),
+                "password_form": CustomPasswordChangeForm(user=request.user),
+                "currency_form": None,
+                "currency_error": True,
+                "transaction_count": Transaction.objects.filter(user=request.user).count(),
+                "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
+            },
+            status=200,
+        )
+
+    currency_choices = build_currency_choices(supported)
     profile_form = ProfileForm(instance=request.user)
     password_form = CustomPasswordChangeForm(user=request.user)
+    currency_form = DefaultCurrencyForm(instance=profile, currency_choices=currency_choices)
 
     if request.method == "POST":
         action = request.POST.get("action")
@@ -336,10 +396,21 @@ def settings_view(request):
                 update_session_auth_hash(request, password_form.user)
                 messages.success(request, "Password changed successfully.")
                 return redirect("settings")
+        elif action == "currency":
+            currency_form = DefaultCurrencyForm(
+                request.POST,
+                instance=profile,
+                currency_choices=currency_choices,
+            )
+            if currency_form.is_valid():
+                currency_form.save()
+                messages.success(request, "Default currency updated.")
+                return redirect("settings")
 
     return render(request, "financetracker/settings.html", {
         "profile_form": profile_form,
         "password_form": password_form,
+        "currency_form": currency_form,
         "transaction_count": Transaction.objects.filter(user=request.user).count(),
         "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
     })
@@ -370,10 +441,7 @@ SESSION_TO_KEY = "converter_to_currency"
 
 
 def _currency_choices(supported):
-    return sorted(
-        ((code, f"{code} — {name}") for code, name in supported.items()),
-        key=lambda x: x[0],
-    )
+    return build_currency_choices(supported)
 
 
 def _resolve_currency(code, supported, session_value, default):

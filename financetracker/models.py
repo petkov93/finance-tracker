@@ -1,6 +1,24 @@
-from django.db import models
 from django.contrib.auth.models import User
+from django.db import models
 from django.utils import timezone
+
+DEFAULT_PROFILE_CURRENCY = "CZK"
+
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    default_currency = models.CharField(max_length=3)
+
+    def __str__(self):
+        return f"{self.user.username} — {self.default_currency}"
+
+
+def ensure_user_profile(user):
+    profile, _created = UserProfile.objects.get_or_create(
+        user=user,
+        defaults={"default_currency": DEFAULT_PROFILE_CURRENCY},
+    )
+    return profile
 
 
 class Category(models.Model):
