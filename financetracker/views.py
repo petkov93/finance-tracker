@@ -30,6 +30,7 @@ from .services.currency import (
     get_supported_currencies,
 )
 from .services.display_conversion import convert_for_display
+from .services.statistics_aggregation import aggregate_for_statistics
 
 
 def login_view(request):
@@ -288,75 +289,7 @@ def statistics(request):
     income_count  = qs_filtered.filter(type="income").count()
     expense_count = qs_filtered.filter(type="expense").count()
 
-    month_labels: list[str] = []
-    monthly_income: list[float] = []
-    monthly_expense: list[float] = []
-    cat_labels: list[str] = []
-    cat_values: list[float] = []
-    income_cat_labels: list[str] = []
-    income_cat_values: list[float] = []
-
-    if not display.conversion_degraded:
-        months_map: dict[str, dict[str, Decimal]] = {}
-        month_order: dict[str, date] = {}
-        cat_expense_map: dict[str, Decimal] = {}
-        cat_income_map: dict[str, Decimal] = {}
-
-        for row in display.rows:
-            transaction = row.transaction
-            if (
-                transaction.currency != display.default_currency
-                and not row.show_native_footnote
-            ):
-                continue
-
-            amount = row.primary_amount
-            month_start = transaction.date.replace(day=1)
-            month_label = month_start.strftime("%b %Y")
-            if month_label not in months_map:
-                months_map[month_label] = {
-                    "income": Decimal("0"),
-                    "expense": Decimal("0"),
-                }
-                month_order[month_label] = month_start
-            months_map[month_label][transaction.type] += amount
-
-            if transaction.category is None:
-                continue
-            category_name = transaction.category.name
-            if transaction.type == Transaction.EXPENSE:
-                cat_expense_map[category_name] = (
-                    cat_expense_map.get(category_name, Decimal("0")) + amount
-                )
-            else:
-                cat_income_map[category_name] = (
-                    cat_income_map.get(category_name, Decimal("0")) + amount
-                )
-
-        month_labels = sorted(months_map.keys(), key=lambda label: month_order[label])
-        monthly_income = [
-            float(months_map[label]["income"]) for label in month_labels
-        ]
-        monthly_expense = [
-            float(months_map[label]["expense"]) for label in month_labels
-        ]
-
-        cat_labels = sorted(
-            cat_expense_map.keys(),
-            key=lambda name: cat_expense_map[name],
-            reverse=True,
-        )
-        cat_values = [float(cat_expense_map[name]) for name in cat_labels]
-
-        income_cat_labels = sorted(
-            cat_income_map.keys(),
-            key=lambda name: cat_income_map[name],
-            reverse=True,
-        )
-        income_cat_values = [float(cat_income_map[name]) for name in income_cat_labels]
-
-    has_expense_categories = bool(cat_labels)
-    has_income_categories = bool(income_cat_labels)
+    aggregation = aggregate_for_statistics(display)
 
     total_income = (
         float(display.total_income) if display.total_income is not None else None
@@ -367,15 +300,23 @@ def statistics(request):
     balance = float(display.balance) if display.balance is not None else None
 
     return render(request, "financetracker/statistics.html", {
-        "month_labels":       json.dumps(month_labels),
-        "monthly_income":     json.dumps(monthly_income),
-        "monthly_expense":    json.dumps(monthly_expense),
-        "cat_labels":         json.dumps(cat_labels),
-        "cat_values":         json.dumps(cat_values),
-        "income_cat_labels":  json.dumps(income_cat_labels),
-        "income_cat_values":  json.dumps(income_cat_values),
-        "has_expense_categories": has_expense_categories,
-        "has_income_categories": has_income_categories,
+        "month_labels":       json.dumps(aggregation.month_labels),
+        "monthly_income":     json.dumps(
+            [float(v) for v in aggregation.monthly_income]
+        ),
+        "monthly_expense":    json.dumps(
+            [float(v) for v in aggregation.monthly_expense]
+        ),
+        "cat_labels":         json.dumps(aggregation.expense_category_labels),
+        "cat_values":         json.dumps(
+            [float(v) for v in aggregation.expense_category_values]
+        ),
+        "income_cat_labels":  json.dumps(aggregation.income_category_labels),
+        "income_cat_values":  json.dumps(
+            [float(v) for v in aggregation.income_category_values]
+        ),
+        "has_expense_categories": aggregation.has_expense_categories,
+        "has_income_categories": aggregation.has_income_categories,
         "total_income":       total_income,
         "total_expense":      total_expense,
         "balance":            balance,

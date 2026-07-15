@@ -16,6 +16,10 @@ _Avoid_: Native currency, native code, source currency, original currency field
 Presenting stored transaction amounts in a user's default currency without changing stored values.
 _Avoid_: Display transform, UI conversion, reporting FX
 
+**Statistics aggregation**:
+Month and category series for the statistics charts, derived from display-converted transaction amounts.
+_Avoid_: Chart building, analytics, reporting rollup, stats pipeline
+
 **Currency conversion**:
 Converting a monetary amount from one currency to another using a latest exchange rate.
 _Avoid_: FX calc, money transform

@@ -6,12 +6,11 @@ from unittest.mock import patch
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from financetracker.models import InvestmentEntry, Transaction, UserProfile, ensure_user_profile
+from financetracker.models import Transaction, UserProfile, ensure_user_profile
 from financetracker.services.currency import CurrencyConversionError, RateResult
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_category,
-    create_investment,
     create_transaction,
     create_user,
 )
@@ -82,17 +81,19 @@ class StatisticsViewsTests(TestCase):
         self.assertEqual(response.context["income_count"], 1)
         self.assertEqual(response.context["expense_count"], 1)
 
-    def test_statistics_monthly_aggregation(self):
+    def test_statistics_wires_aggregation_into_template_context(self):
         create_transaction(
             self.user,
             amount=Decimal("1000.00"),
             type=Transaction.INCOME,
+            category=self.category,
             transaction_date=date(2025, 2, 5),
         )
         create_transaction(
             self.user,
             amount=Decimal("400.00"),
             type=Transaction.EXPENSE,
+            category=create_category(name="Food"),
             transaction_date=date(2025, 2, 20),
         )
 
@@ -100,39 +101,16 @@ class StatisticsViewsTests(TestCase):
             reverse("statistics"),
             {"from_date": "2025-02-01", "to_date": "2025-02-28"},
         )
-        month_labels = json.loads(response.context["month_labels"])
-        monthly_income = json.loads(response.context["monthly_income"])
-        monthly_expense = json.loads(response.context["monthly_expense"])
 
-        self.assertEqual(month_labels, ["Feb 2025"])
-        self.assertEqual(monthly_income, [1000.0])
-        self.assertEqual(monthly_expense, [400.0])
-
-    def test_statistics_category_breakdown_excludes_null_categories(self):
-        create_transaction(
-            self.user,
-            amount=Decimal("100.00"),
-            type=Transaction.EXPENSE,
-            category=create_category(name="Food"),
-            transaction_date=date(2025, 5, 1),
-        )
-        create_transaction(
-            self.user,
-            amount=Decimal("50.00"),
-            type=Transaction.EXPENSE,
-            category=None,
-            transaction_date=date(2025, 5, 2),
-        )
-
-        response = self.client.get(
-            reverse("statistics"),
-            {"from_date": "2025-05-01", "to_date": "2025-05-31"},
-        )
-        cat_labels = json.loads(response.context["cat_labels"])
-        cat_values = json.loads(response.context["cat_values"])
-        self.assertEqual(cat_labels, ["Food"])
-        self.assertEqual(cat_values, [100.0])
+        self.assertEqual(json.loads(response.context["month_labels"]), ["Feb 2025"])
+        self.assertEqual(json.loads(response.context["monthly_income"]), [1000.0])
+        self.assertEqual(json.loads(response.context["monthly_expense"]), [400.0])
+        self.assertEqual(json.loads(response.context["cat_labels"]), ["Food"])
+        self.assertEqual(json.loads(response.context["cat_values"]), [400.0])
+        self.assertEqual(json.loads(response.context["income_cat_labels"]), ["Salary"])
+        self.assertEqual(json.loads(response.context["income_cat_values"]), [1000.0])
         self.assertTrue(response.context["has_expense_categories"])
+        self.assertTrue(response.context["has_income_categories"])
 
     def test_statistics_converted_totals_with_mixed_currencies(self):
         past = date.today() - timedelta(days=7)
@@ -168,80 +146,6 @@ class StatisticsViewsTests(TestCase):
         self.assertEqual(response.context["balance"], 150.0)
         self.assertEqual(response.context["default_currency"], "CZK")
         self.assertFalse(response.context["conversion_degraded"])
-
-    def test_statistics_monthly_aggregation_with_mixed_currencies(self):
-        past = date(2025, 2, 5)
-        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
-        create_transaction(
-            self.user,
-            amount=Decimal("10.00"),
-            currency="EUR",
-            type=Transaction.INCOME,
-            transaction_date=past,
-        )
-        create_transaction(
-            self.user,
-            amount=Decimal("400.00"),
-            currency="CZK",
-            type=Transaction.EXPENSE,
-            transaction_date=date(2025, 2, 20),
-        )
-
-        with patch(
-            "financetracker.services.display_conversion.get_rate",
-            return_value=RateResult(rate=Decimal("25.00")),
-        ):
-            response = self.client.get(
-                reverse("statistics"),
-                {"from_date": "2025-02-01", "to_date": "2025-02-28"},
-            )
-
-        month_labels = json.loads(response.context["month_labels"])
-        monthly_income = json.loads(response.context["monthly_income"])
-        monthly_expense = json.loads(response.context["monthly_expense"])
-
-        self.assertEqual(month_labels, ["Feb 2025"])
-        self.assertEqual(monthly_income, [250.0])
-        self.assertEqual(monthly_expense, [400.0])
-
-    def test_statistics_category_breakdown_uses_converted_amounts(self):
-        past = date(2025, 5, 1)
-        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
-        create_transaction(
-            self.user,
-            amount=Decimal("10.00"),
-            currency="EUR",
-            type=Transaction.EXPENSE,
-            category=create_category(name="Food"),
-            transaction_date=past,
-        )
-        create_transaction(
-            self.user,
-            amount=Decimal("50.00"),
-            currency="CZK",
-            type=Transaction.INCOME,
-            category=create_category(name="Salary", type=Transaction.INCOME),
-            transaction_date=past,
-        )
-
-        with patch(
-            "financetracker.services.display_conversion.get_rate",
-            return_value=RateResult(rate=Decimal("25.00")),
-        ):
-            response = self.client.get(
-                reverse("statistics"),
-                {"from_date": "2025-05-01", "to_date": "2025-05-31"},
-            )
-
-        cat_labels = json.loads(response.context["cat_labels"])
-        cat_values = json.loads(response.context["cat_values"])
-        income_cat_labels = json.loads(response.context["income_cat_labels"])
-        income_cat_values = json.loads(response.context["income_cat_values"])
-
-        self.assertEqual(cat_labels, ["Food"])
-        self.assertEqual(cat_values, [250.0])
-        self.assertEqual(income_cat_labels, ["Salary"])
-        self.assertEqual(income_cat_values, [50.0])
 
     def test_statistics_degradation_hides_totals_and_charts(self):
         UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
