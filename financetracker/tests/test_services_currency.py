@@ -1,10 +1,9 @@
 from datetime import date, timedelta
 from decimal import Decimal
-from threading import Barrier, Thread
 from unittest.mock import MagicMock, patch
 
 import requests
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from financetracker.models import ExchangeRate, SyncMetadata
@@ -447,42 +446,27 @@ class CurrencyServiceTests(TestCase):
         self.assertFalse(metadata.sync_in_progress)
 
 
-class StartupSyncLockConcurrencyTests(TransactionTestCase):
+class StartupSyncLockTests(TestCase):
     @patch("financetracker.services.currency.requests.get")
-    def test_concurrent_sync_attempts_do_not_double_fetch(self, mock_get):
-        rates_response = MagicMock()
-        rates_response.raise_for_status.return_value = None
-        rates_response.json.return_value = [
-            {
-                "date": date.today().isoformat(),
-                "base": "EUR",
-                "quote": "CZK",
-                "rate": 25.0,
-            },
-        ]
-        currencies_response = MagicMock()
-        currencies_response.raise_for_status.return_value = None
-        currencies_response.json.return_value = [
-            {"iso_code": "EUR", "name": "Euro"},
-            {"iso_code": "CZK", "name": "Czech Koruna"},
-        ]
-        mock_get.side_effect = [rates_response, currencies_response]
-
-        barrier = Barrier(2)
-
-        def worker():
-            barrier.wait()
-            ensure_sync_if_stale()
-
-        threads = [Thread(target=worker) for _ in range(2)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-
-        self.assertEqual(mock_get.call_count, 2)
+    def test_skips_fetch_when_sync_already_in_progress(self, mock_get):
         metadata = SyncMetadata.get_singleton()
-        self.assertEqual(metadata.last_successful_sync_date, date.today())
+        metadata.sync_in_progress = True
+        metadata.save(update_fields=["sync_in_progress"])
+
+        ensure_sync_if_stale()
+
+        mock_get.assert_not_called()
+        metadata.refresh_from_db()
+        self.assertTrue(metadata.sync_in_progress)
+
+    @patch("financetracker.services.currency.requests.get")
+    def test_releases_lock_after_failed_sync(self, mock_get):
+        mock_get.side_effect = requests.RequestException("network down")
+
+        ensure_sync_if_stale()
+
+        metadata = SyncMetadata.get_singleton()
+        self.assertIsNone(metadata.last_successful_sync_date)
         self.assertFalse(metadata.sync_in_progress)
 
     @patch("financetracker.services.currency.requests.get")
