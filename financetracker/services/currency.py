@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Iterable
 
 import requests
-from django.db import transaction
+from django.db import OperationalError, transaction
 from django.utils import timezone
 
 from financetracker.models import EUR_BASE_CURRENCY, ExchangeRate, SyncMetadata
@@ -134,18 +134,25 @@ def _is_sync_stale(metadata: SyncMetadata | None = None) -> bool:
 
 
 def _try_acquire_sync_lock() -> bool:
-    SyncMetadata.get_singleton()
-    with transaction.atomic():
-        metadata = SyncMetadata.objects.select_for_update().get(pk=1)
-        if metadata.sync_in_progress or not _is_sync_stale(metadata):
-            return False
-        metadata.sync_in_progress = True
-        metadata.save(update_fields=["sync_in_progress"])
-        return True
+    try:
+        SyncMetadata.get_singleton()
+        with transaction.atomic():
+            metadata = SyncMetadata.objects.select_for_update().get(pk=1)
+            if metadata.sync_in_progress or not _is_sync_stale(metadata):
+                return False
+            metadata.sync_in_progress = True
+            metadata.save(update_fields=["sync_in_progress"])
+            return True
+    except OperationalError:
+        # SQLite can raise "database is locked" under concurrent writers.
+        return False
 
 
 def _release_sync_lock() -> None:
-    SyncMetadata.objects.filter(pk=1).update(sync_in_progress=False)
+    try:
+        SyncMetadata.objects.filter(pk=1).update(sync_in_progress=False)
+    except OperationalError:
+        logger.warning("Failed to release exchange-rate sync lock")
 
 
 def ensure_sync_if_stale() -> None:
