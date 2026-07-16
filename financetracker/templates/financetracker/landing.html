@@ -1,0 +1,117 @@
+{% extends "financetracker/base.html" %}
+{% load static %}
+
+{% block title %}Finance Tracker — Your personal ledger{% endblock %}
+{% block body_class %} landing{% endblock %}
+
+{% block content %}
+<div class="landing">
+  <section class="landing-hero animate-in" aria-labelledby="landing-hero-title">
+    <div class="landing-hero-copy">
+      <p class="landing-brand">Finance Tracker</p>
+      <h1 id="landing-hero-title" class="landing-hero-title">
+        Income, spending, investments — finally in one place.
+      </h1>
+      <p class="landing-hero-lead">
+        Track amounts in their Transaction currency, then review everything in your Default currency
+        through Display conversion — one personal ledger for day-to-day money.
+      </p>
+      <div class="landing-hero-actions">
+        <a href="{% url 'register' %}" class="btn btn-primary">Sign up</a>
+        <a href="{% url 'login' %}" class="btn btn-ghost">Log in</a>
+      </div>
+    </div>
+    <div
+      class="landing-hero-page"
+      style="--landing-shot-src: url('{% static 'financetracker/img/landing/dashboard.png' %}')"
+      aria-hidden="true"
+    >
+      <div class="landing-page-ruled">
+        <span class="landing-page-label">Ledger</span>
+        <span class="landing-page-line"></span>
+        <span class="landing-page-line landing-page-line--short"></span>
+        <span class="landing-page-line"></span>
+        <span class="landing-page-line landing-page-line--mid"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-features" aria-label="Product features">
+    <article class="landing-feature animate-in animate-in-delay-1">
+      <div class="landing-feature-copy">
+        <h2 class="landing-feature-title">One ledger for every day</h2>
+        <p class="landing-feature-text">
+          Your dashboard keeps income and spending together — filter by category, see balances
+          at a glance, and stay close to the numbers that matter.
+        </p>
+      </div>
+      <figure
+        class="landing-shot"
+        data-landing-shot="dashboard"
+        style="--landing-shot-src: url('{% static 'financetracker/img/landing/dashboard.png' %}')"
+      >
+        <div class="landing-shot-frame">
+          <div class="landing-shot-placeholder" aria-hidden="true">
+            <span class="landing-shot-caption">Dashboard</span>
+          </div>
+        </div>
+        <figcaption class="visually-hidden">Dashboard screenshot</figcaption>
+      </figure>
+    </article>
+
+    <article class="landing-feature landing-feature--reverse animate-in animate-in-delay-2">
+      <div class="landing-feature-copy">
+        <h2 class="landing-feature-title">Patterns you can actually read</h2>
+        <p class="landing-feature-text">
+          Statistics turn Display-converted amounts into month and category charts, so spending
+          habits show up without a spreadsheet hunt.
+        </p>
+      </div>
+      <figure
+        class="landing-shot"
+        data-landing-shot="statistics"
+        style="--landing-shot-src: url('{% static 'financetracker/img/landing/statistics.png' %}')"
+      >
+        <div class="landing-shot-frame">
+          <div class="landing-shot-placeholder" aria-hidden="true">
+            <span class="landing-shot-caption">Statistics</span>
+          </div>
+        </div>
+        <figcaption class="visually-hidden">Statistics screenshot</figcaption>
+      </figure>
+    </article>
+
+    <article class="landing-feature animate-in animate-in-delay-3">
+      <div class="landing-feature-copy">
+        <h2 class="landing-feature-title">Any currency, one workflow</h2>
+        <p class="landing-feature-text">
+          Need a quick Currency conversion? The converter keeps your last-used pair ready —
+          useful when life is not all in one currency.
+        </p>
+      </div>
+      <figure
+        class="landing-shot"
+        data-landing-shot="converter"
+        style="--landing-shot-src: url('{% static 'financetracker/img/landing/converter.png' %}')"
+      >
+        <div class="landing-shot-frame">
+          <div class="landing-shot-placeholder" aria-hidden="true">
+            <span class="landing-shot-caption">Converter</span>
+          </div>
+        </div>
+        <figcaption class="visually-hidden">Currency converter screenshot</figcaption>
+      </figure>
+    </article>
+  </section>
+
+  <section class="landing-cta animate-in animate-in-delay-3" aria-labelledby="landing-cta-title">
+    <div class="landing-cta-inner">
+      <h2 id="landing-cta-title" class="landing-cta-title">Open your ledger</h2>
+      <p class="landing-cta-text">
+        Create a free account and start tracking day-to-day money in one personal ledger.
+      </p>
+      <a href="{% url 'register' %}" class="btn btn-primary">Sign up</a>
+    </div>
+  </section>
+</div>
+{% endblock %}
