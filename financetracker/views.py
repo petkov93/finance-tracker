@@ -12,7 +12,16 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
-from .models import Transaction, Category, InvestmentEntry, UserProfile, ensure_user_profile
+from .models import (
+    THEME_CHOICES,
+    THEME_VALUES,
+    Transaction,
+    Category,
+    InvestmentEntry,
+    UserProfile,
+    ensure_user_profile,
+    theme_cookie_kwargs,
+)
 from .forms import (
     CurrencyConverterForm,
     CustomPasswordChangeForm,
@@ -420,6 +429,8 @@ def settings_view(request):
                 "password_form": CustomPasswordChangeForm(user=request.user),
                 "currency_form": None,
                 "currency_error": True,
+                "theme_choices": THEME_CHOICES,
+                "selected_theme": profile.theme,
                 "transaction_count": Transaction.objects.filter(user=request.user).count(),
                 "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
             },
@@ -456,11 +467,24 @@ def settings_view(request):
                 currency_form.save()
                 messages.success(request, "Default currency updated.")
                 return redirect("settings")
+        elif action == "theme":
+            theme = (request.POST.get("theme") or "").strip()
+            if theme not in THEME_VALUES:
+                messages.error(request, "Invalid appearance choice.")
+                return redirect("settings")
+            profile.theme = theme
+            profile.save(update_fields=["theme"])
+            messages.success(request, "Appearance updated.")
+            response = redirect("settings")
+            response.set_cookie(**theme_cookie_kwargs(theme))
+            return response
 
     return render(request, "financetracker/settings.html", {
         "profile_form": profile_form,
         "password_form": password_form,
         "currency_form": currency_form,
+        "theme_choices": THEME_CHOICES,
+        "selected_theme": profile.theme,
         "transaction_count": Transaction.objects.filter(user=request.user).count(),
         "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
     })

@@ -49,6 +49,7 @@ class AuthViewsTests(TestCase):
         self.assertRedirects(response, reverse("dashboard"))
         profile = UserProfile.objects.get(user=self.user)
         self.assertEqual(profile.default_currency, "CZK")
+        self.assertEqual(profile.theme, "system")
 
     def test_register_creates_user_profile_and_logs_in(self):
         response = self.client.post(
@@ -65,6 +66,7 @@ class AuthViewsTests(TestCase):
         user = User.objects.get(username="newuser")
         profile = UserProfile.objects.get(user=user)
         self.assertEqual(profile.default_currency, "EUR")
+        self.assertEqual(profile.theme, "system")
 
     def test_register_requires_default_currency(self):
         response = self.client.post(

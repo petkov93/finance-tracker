@@ -5,6 +5,18 @@ from django.utils import timezone
 DEFAULT_PROFILE_CURRENCY = "CZK"
 EUR_BASE_CURRENCY = "EUR"
 
+THEME_WARM = "warm"
+THEME_NIGHT = "night"
+THEME_SYSTEM = "system"
+THEME_CHOICES = [
+    (THEME_WARM, "Warm Ledger"),
+    (THEME_NIGHT, "Night Ledger"),
+    (THEME_SYSTEM, "System"),
+]
+DEFAULT_PROFILE_THEME = THEME_SYSTEM
+THEME_COOKIE_NAME = "ft_theme"
+THEME_VALUES = {THEME_WARM, THEME_NIGHT, THEME_SYSTEM}
+
 
 class ExchangeRate(models.Model):
     base_currency = models.CharField(max_length=3)
@@ -48,6 +60,11 @@ class SyncMetadata(models.Model):
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     default_currency = models.CharField(max_length=3)
+    theme = models.CharField(
+        max_length=16,
+        choices=THEME_CHOICES,
+        default=DEFAULT_PROFILE_THEME,
+    )
 
     def __str__(self):
         return f"{self.user.username} — {self.default_currency}"
@@ -56,9 +73,22 @@ class UserProfile(models.Model):
 def ensure_user_profile(user):
     profile, _created = UserProfile.objects.get_or_create(
         user=user,
-        defaults={"default_currency": DEFAULT_PROFILE_CURRENCY},
+        defaults={
+            "default_currency": DEFAULT_PROFILE_CURRENCY,
+            "theme": DEFAULT_PROFILE_THEME,
+        },
     )
     return profile
+
+
+def theme_cookie_kwargs(theme: str) -> dict:
+    return {
+        "key": THEME_COOKIE_NAME,
+        "value": theme,
+        "max_age": 60 * 60 * 24 * 365,
+        "samesite": "Lax",
+        "httponly": False,
+    }
 
 
 class Category(models.Model):

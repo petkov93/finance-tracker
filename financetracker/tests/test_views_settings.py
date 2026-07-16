@@ -117,3 +117,71 @@ class SettingsViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         profile = UserProfile.objects.get(user=self.user)
         self.assertEqual(profile.default_currency, "CZK")
+        self.assertEqual(profile.theme, "system")
+
+    def test_theme_update_persists_and_shows_selection(self):
+        for theme in ("warm", "night", "system"):
+            with self.subTest(theme=theme):
+                response = self.client.post(
+                    reverse("settings"),
+                    {
+                        "action": "theme",
+                        "theme": theme,
+                    },
+                    follow=True,
+                )
+                self.assertEqual(response.status_code, 200)
+                profile = UserProfile.objects.get(user=self.user)
+                self.assertEqual(profile.theme, theme)
+                self.assertContains(response, "Appearance updated.")
+                self.assertEqual(response.context["selected_theme"], theme)
+                self.assertContains(
+                    response,
+                    f'class="theme-swatch theme-swatch-{theme} is-selected"',
+                )
+                self.assertContains(response, 'aria-pressed="true"')
+
+    def test_theme_update_sets_preference_cookie(self):
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "theme",
+                "theme": "night",
+            },
+        )
+        self.assertRedirects(response, reverse("settings"))
+        self.assertEqual(response.cookies["ft_theme"].value, "night")
+
+    def test_invalid_theme_does_not_change_preference(self):
+        profile = UserProfile.objects.get(user=self.user)
+        profile.theme = "warm"
+        profile.save(update_fields=["theme"])
+
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "theme",
+                "theme": "neon",
+            },
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        profile.refresh_from_db()
+        self.assertEqual(profile.theme, "warm")
+        self.assertContains(response, "Invalid appearance choice.")
+
+    def test_theme_update_requires_login(self):
+        self.client.logout()
+        response = self.client.post(
+            reverse("settings"),
+            {
+                "action": "theme",
+                "theme": "night",
+            },
+        )
+        self.assertRedirects(response, f"{reverse('login')}?next={reverse('settings')}")
+
+    def test_guest_login_page_loads_without_theme_preference(self):
+        self.client.logout()
+        response = self.client.get(reverse("login"))
+        self.assertEqual(response.status_code, 200)
