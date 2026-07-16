@@ -18,6 +18,7 @@
         pref = "system";
       }
       root.setAttribute("data-theme-preference", pref);
+      /* Twin of theme.js resolve(): System -> Warm Ledger / Night Ledger from OS scheme. */
       function resolve(preference) {
         if (preference === "warm" || preference === "night") return preference;
         return window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "warm";
