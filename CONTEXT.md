@@ -39,3 +39,19 @@ _Avoid_: Initial pair, startup currencies
 **Last-used pair**:
 The conversion pair remembered after the user's most recent successful convert on the converter page.
 _Avoid_: Recent pair, saved currencies
+
+**Theme preference**:
+The user's chosen appearance mode stored on their profile: Warm Ledger, Night Ledger, or System.
+_Avoid_: Color scheme setting, UI mode, skin, dark mode toggle (as the only name for the whole feature)
+
+**Warm Ledger**:
+The light cream-paper appearance of the app.
+_Avoid_: Light mode, default theme (unless describing the historical single look)
+
+**Night Ledger**:
+The same-family dark appearance companion to Warm Ledger.
+_Avoid_: Dark mode (alone), inverted theme, generic slate dark
+
+**System** (appearance):
+Theme preference that resolves to Warm Ledger or Night Ledger from the operating system color scheme, including live updates while a tab is open.
+_Avoid_: Auto theme, OS theme (as the stored preference value name — the stored value is `system`)

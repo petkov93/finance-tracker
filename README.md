@@ -1,6 +1,6 @@
 # Finance Tracker
 
-A personal finance web app for tracking income, expenses, and investments. Transactions are stored in their **native currency**; the dashboard and statistics show amounts in each user's **default currency** via on-the-fly **display conversion**. Built with Django, PostgreSQL (Supabase), and a dark UI served via WhiteNoise.
+A personal finance web app for tracking income, expenses, and investments. Transactions are stored in their **native currency**; the dashboard and statistics show amounts in each user's **default currency** via on-the-fly **display conversion**. Built with Django, PostgreSQL (Supabase), and a Warm Ledger / Night Ledger UI (plus System preference) served via WhiteNoise.
 
 **Repository:** [github.com/petkov93/finance-tracker](https://github.com/petkov93/finance-tracker)
 
@@ -23,6 +23,7 @@ A personal finance web app for tracking income, expenses, and investments. Trans
 - Summary cards (net balance, income, expense counts) after display conversion (historical rates for past dates, latest for today and future)
 - **Monthly bar chart** with configurable date range
 - **Pie charts** for expenses and income by category — all totals in your default currency
+- Chart colors follow the active appearance (Warm / Night), including live System OS changes
 
 ### Investments
 - Separate view for **invested** vs **profit** amounts (**CZK only** — no currency picker or conversion)
@@ -39,8 +40,14 @@ A personal finance web app for tracking income, expenses, and investments. Trans
 - Change default currency later in **Settings**
 - Log in, log out; each user only sees their own data
 
+### Appearance
+- **Settings → Appearance** with three choices: **Warm Ledger** (cream-paper light), **Night Ledger** (same-family dark), and **System** (follow OS light/dark)
+- Preference is stored on the user profile (default **System** for new accounts and guests)
+- Instant apply from swatch cards; FOUC-safe cookie keeps the first paint aligned
+- System updates live when the OS theme changes; Statistics charts follow CSS theme tokens
+
 ### Admin
-- Django admin at `/admin/` for categories, transactions, and investment entries
+- Django admin at `/admin/` for categories, transactions, investment entries, and user profiles (including theme)
 
 ---
 
@@ -66,12 +73,17 @@ finance-tracker/
 │   ├── management/commands/
 │   │   └── seed_categories.py   # Default categories (empty DB only)
 │   ├── migrations/
-│   ├── static/financetracker/css/
+│   ├── static/financetracker/
+│   │   ├── css/style.css         # Warm / Night design tokens
+│   │   └── js/theme.js           # Live System preference + themechange events
 │   ├── templates/financetracker/
 │   ├── models.py           # Category, Transaction, InvestmentEntry, UserProfile, ExchangeRate
+│   ├── context_processors.py     # theme_preference for templates
+│   ├── middleware.py             # Sync ft_theme cookie from profile
 │   ├── services/
-│   │   ├── currency.py           # Frankfurter rates, DB persistence, sync, convert
-│   │   └── display_conversion.py # Batch display conversion for dashboard/statistics
+│   │   ├── currency.py                 # Frankfurter rates, DB persistence, sync, convert
+│   │   ├── display_conversion.py       # Batch display conversion for dashboard/statistics
+│   │   └── statistics_aggregation.py   # Month/category series for charts
 │   ├── views.py
 │   ├── forms.py
 │   └── urls.py
@@ -167,15 +179,16 @@ Then visit `/admin/`.
 | Concept | Where it lives | Purpose |
 |---------|----------------|---------|
 | **Default currency** | `UserProfile.default_currency` (one per user) | Unit of account for dashboard and statistics |
+| **Theme preference** | `UserProfile.theme` (`warm` / `night` / `system`) | Appearance choice; System resolves from the OS |
 | **Transaction currency** | `Transaction.currency` | Native currency the amount was actually paid or received in |
 | **Display conversion** | Computed at read time (not stored) | Converts transaction amounts into the user's default currency for display and aggregation |
 
-Existing users and transactions are migrated automatically: every user gets a profile with default **CZK**, and every existing transaction is backfilled as CZK. Users created via `createsuperuser` receive a lazy profile with CZK default on first login.
+Existing users and transactions are migrated automatically: every user gets a profile with default **CZK**, and every existing transaction is backfilled as CZK. Theme defaults to **System**. Users created via `createsuperuser` receive a lazy profile (CZK + System) on first login.
 
 ### Registration and settings
 
-- **Registration** requires choosing a default currency from the Frankfurter-supported list. Client-side logic reads `navigator.language` and pre-selects the picker when the region maps unambiguously to a supported ISO code; otherwise the picker stays empty until the user chooses.
-- **Settings** includes a section to update default currency. Dashboard and statistics re-render in the new currency on the next page load.
+- **Registration** requires choosing a default currency from the Frankfurter-supported list. Client-side logic reads `navigator.language` and pre-selects the picker when the region maps unambiguously to a supported ISO code; otherwise the picker stays empty until the user chooses. New accounts start with theme **System**.
+- **Settings** includes sections to update default currency and **Appearance** (Warm Ledger / Night Ledger / System). Currency changes re-render dashboard and statistics on the next page load; theme swatches apply immediately.
 
 ### Transaction entry
 
