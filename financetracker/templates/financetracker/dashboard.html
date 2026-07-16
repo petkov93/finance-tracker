@@ -103,9 +103,9 @@
             <div class="transaction-amount {% if t.type == 'income' %}amount-income{% else %}amount-expense{% endif %}">
               {% if t.type == 'income' %}+{% else %}−{% endif %}{{ row.primary_amount|floatformat:2 }} {{ row.primary_currency }}
             </div>
-            {% if row.show_native_footnote %}
+            {% if row.show_transaction_currency_footnote %}
               <div class="transaction-amount-footnote">
-                {% if t.type == 'income' %}+{% else %}−{% endif %}{{ row.native_amount|floatformat:2 }} {{ row.native_currency }}
+                {% if t.type == 'income' %}+{% else %}−{% endif %}{{ row.transaction_amount|floatformat:2 }} {{ row.transaction_currency }}
               </div>
             {% endif %}
             <div class="transaction-actions">

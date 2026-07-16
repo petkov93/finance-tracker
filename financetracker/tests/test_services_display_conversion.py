@@ -8,7 +8,10 @@ from django.utils import timezone
 
 from financetracker.models import ExchangeRate
 from financetracker.services.currency import RateResult
-from financetracker.services.display_conversion import convert_for_display
+from financetracker.services.display_conversion import (
+    RowConversionOutcome,
+    convert_for_display,
+)
 from financetracker.tests.factories import create_transaction, create_user
 
 
@@ -37,7 +40,7 @@ class DisplayConversionTests(TestCase):
     def setUp(self):
         self.user = create_user()
 
-    def test_same_currency_row_shows_single_amount(self):
+    def test_same_currency_row_is_in_default_without_footnote(self):
         transaction = create_transaction(
             self.user,
             amount=Decimal("100.00"),
@@ -49,10 +52,16 @@ class DisplayConversionTests(TestCase):
         row = result.rows[0]
         self.assertEqual(row.primary_amount, Decimal("100.00"))
         self.assertEqual(row.primary_currency, "CZK")
-        self.assertFalse(row.show_native_footnote)
+        self.assertEqual(row.transaction_amount, Decimal("100.00"))
+        self.assertEqual(row.transaction_currency, "CZK")
+        self.assertEqual(
+            row.conversion_outcome,
+            RowConversionOutcome.IN_DEFAULT_CURRENCY,
+        )
+        self.assertFalse(row.show_transaction_currency_footnote)
         self.assertFalse(result.conversion_degraded)
 
-    def test_different_currency_row_shows_converted_primary_and_native_footnote(self):
+    def test_converted_foreign_row_outcome_and_transaction_currency_footnote(self):
         past = date.today() - timedelta(days=7)
         transaction = create_transaction(
             self.user,
@@ -71,9 +80,10 @@ class DisplayConversionTests(TestCase):
         row = result.rows[0]
         self.assertEqual(row.primary_amount, Decimal("250.00"))
         self.assertEqual(row.primary_currency, "CZK")
-        self.assertEqual(row.native_amount, Decimal("10.00"))
-        self.assertEqual(row.native_currency, "EUR")
-        self.assertTrue(row.show_native_footnote)
+        self.assertEqual(row.transaction_amount, Decimal("10.00"))
+        self.assertEqual(row.transaction_currency, "EUR")
+        self.assertEqual(row.conversion_outcome, RowConversionOutcome.CONVERTED)
+        self.assertTrue(row.show_transaction_currency_footnote)
         self.assertFalse(result.conversion_degraded)
         self.assertIsNone(result.rates_stale_date)
 
@@ -148,7 +158,7 @@ class DisplayConversionTests(TestCase):
         self.assertEqual(result.total_expense, Decimal("100.00"))
         self.assertEqual(result.balance, Decimal("150.00"))
 
-    def test_today_rate_failure_sets_degradation_flag_and_shows_native_amounts(self):
+    def test_today_rate_failure_sets_degradation_and_shows_transaction_currency(self):
         today = date.today()
         transaction = create_transaction(
             self.user,
@@ -171,7 +181,10 @@ class DisplayConversionTests(TestCase):
         self.assertTrue(result.conversion_degraded)
         self.assertEqual(row.primary_amount, Decimal("10.00"))
         self.assertEqual(row.primary_currency, "EUR")
-        self.assertFalse(row.show_native_footnote)
+        self.assertEqual(row.transaction_amount, Decimal("10.00"))
+        self.assertEqual(row.transaction_currency, "EUR")
+        self.assertEqual(row.conversion_outcome, RowConversionOutcome.EXCLUDED)
+        self.assertFalse(row.show_transaction_currency_footnote)
         self.assertIsNone(result.total_income)
         self.assertIsNone(result.total_expense)
         self.assertIsNone(result.balance)
@@ -206,7 +219,8 @@ class DisplayConversionTests(TestCase):
         row = result.rows[0]
         self.assertEqual(row.primary_amount, Decimal("250.00"))
         self.assertEqual(row.primary_currency, "CZK")
-        self.assertTrue(row.show_native_footnote)
+        self.assertEqual(row.conversion_outcome, RowConversionOutcome.CONVERTED)
+        self.assertTrue(row.show_transaction_currency_footnote)
 
     def test_no_rate_at_all_sets_degraded_without_stale_date(self):
         today = date.today()
@@ -248,9 +262,10 @@ class DisplayConversionTests(TestCase):
         row = result.rows[0]
         self.assertEqual(row.primary_amount, Decimal("10.00"))
         self.assertEqual(row.primary_currency, "EUR")
-        self.assertFalse(row.show_native_footnote)
+        self.assertEqual(row.conversion_outcome, RowConversionOutcome.EXCLUDED)
+        self.assertFalse(row.show_transaction_currency_footnote)
 
-    def test_historical_rate_failure_does_not_degrade_dashboard(self):
+    def test_historical_rate_failure_excludes_unconverted_without_degrading(self):
         past = date.today() - timedelta(days=7)
         converted_tx = create_transaction(
             self.user,
@@ -283,8 +298,11 @@ class DisplayConversionTests(TestCase):
 
         self.assertFalse(result.conversion_degraded)
         self.assertEqual(result.rows[0].primary_amount, Decimal("250.00"))
+        self.assertEqual(result.rows[0].conversion_outcome, RowConversionOutcome.CONVERTED)
         self.assertEqual(result.rows[1].primary_amount, Decimal("5.00"))
         self.assertEqual(result.rows[1].primary_currency, "USD")
+        self.assertEqual(result.rows[1].conversion_outcome, RowConversionOutcome.EXCLUDED)
+        self.assertFalse(result.rows[1].show_transaction_currency_footnote)
         self.assertEqual(result.total_income, Decimal("250.00"))
         self.assertEqual(result.total_expense, Decimal("0"))
         self.assertEqual(result.balance, Decimal("250.00"))

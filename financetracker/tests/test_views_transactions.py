@@ -204,7 +204,7 @@ class TransactionViewsTests(TestCase):
         self.assertEqual(rows[0].transaction, food_tx)
         self.assertEqual(rows[0].primary_amount, Decimal("250.00"))
 
-    def test_dashboard_degradation_shows_warning_and_native_amounts(self):
+    def test_dashboard_degradation_shows_warning_and_transaction_currency_amounts(self):
         UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
         create_transaction(
             self.user,

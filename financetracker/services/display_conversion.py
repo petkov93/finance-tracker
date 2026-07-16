@@ -1,10 +1,17 @@
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from enum import Enum
 from typing import Iterable
 
 from financetracker.models import Transaction
 from financetracker.services.currency import get_rates
+
+
+class RowConversionOutcome(Enum):
+    IN_DEFAULT_CURRENCY = "in_default_currency"
+    CONVERTED = "converted"
+    EXCLUDED = "excluded"
 
 
 @dataclass(frozen=True)
@@ -12,9 +19,13 @@ class DisplayTransactionRow:
     transaction: Transaction
     primary_amount: Decimal
     primary_currency: str
-    native_amount: Decimal
-    native_currency: str
-    show_native_footnote: bool
+    transaction_amount: Decimal
+    transaction_currency: str
+    conversion_outcome: RowConversionOutcome
+
+    @property
+    def show_transaction_currency_footnote(self) -> bool:
+        return self.conversion_outcome == RowConversionOutcome.CONVERTED
 
 
 @dataclass(frozen=True)
@@ -94,13 +105,18 @@ def _build_row(
     degraded: bool,
 ) -> DisplayTransactionRow:
     if degraded:
+        outcome = (
+            RowConversionOutcome.IN_DEFAULT_CURRENCY
+            if transaction.currency == default_currency
+            else RowConversionOutcome.EXCLUDED
+        )
         return DisplayTransactionRow(
             transaction=transaction,
             primary_amount=transaction.amount,
             primary_currency=transaction.currency,
-            native_amount=transaction.amount,
-            native_currency=transaction.currency,
-            show_native_footnote=False,
+            transaction_amount=transaction.amount,
+            transaction_currency=transaction.currency,
+            conversion_outcome=outcome,
         )
 
     if transaction.currency == default_currency:
@@ -108,9 +124,9 @@ def _build_row(
             transaction=transaction,
             primary_amount=transaction.amount,
             primary_currency=default_currency,
-            native_amount=transaction.amount,
-            native_currency=transaction.currency,
-            show_native_footnote=False,
+            transaction_amount=transaction.amount,
+            transaction_currency=transaction.currency,
+            conversion_outcome=RowConversionOutcome.IN_DEFAULT_CURRENCY,
         )
 
     converted = _converted_amount(transaction, default_currency, rates)
@@ -119,18 +135,18 @@ def _build_row(
             transaction=transaction,
             primary_amount=transaction.amount,
             primary_currency=transaction.currency,
-            native_amount=transaction.amount,
-            native_currency=transaction.currency,
-            show_native_footnote=False,
+            transaction_amount=transaction.amount,
+            transaction_currency=transaction.currency,
+            conversion_outcome=RowConversionOutcome.EXCLUDED,
         )
 
     return DisplayTransactionRow(
         transaction=transaction,
         primary_amount=converted,
         primary_currency=default_currency,
-        native_amount=transaction.amount,
-        native_currency=transaction.currency,
-        show_native_footnote=True,
+        transaction_amount=transaction.amount,
+        transaction_currency=transaction.currency,
+        conversion_outcome=RowConversionOutcome.CONVERTED,
     )
 
 
