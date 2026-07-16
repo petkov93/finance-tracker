@@ -32,6 +32,11 @@ from .forms import (
     TransactionForm,
     build_currency_choices,
 )
+from .services.conversion_pair import (
+    ConversionPair,
+    remember_conversion_pair,
+    resolve_conversion_pair,
+)
 from .services.currency import (
     CurrencyConversionError,
     convert,
@@ -508,42 +513,8 @@ def clear_all_investments(request):
     return redirect("settings")
 
 
-DEFAULT_FROM_CURRENCY = "CZK"
-DEFAULT_TO_CURRENCY = "EUR"
-SESSION_FROM_KEY = "converter_from_currency"
-SESSION_TO_KEY = "converter_to_currency"
-
-
 def _currency_choices(supported):
     return build_currency_choices(supported)
-
-
-def _resolve_currency(code, supported, session_value, default):
-    if code:
-        normalized = code.upper()
-        if normalized in supported:
-            return normalized
-    if session_value and session_value in supported:
-        return session_value
-    return default
-
-
-def _resolve_conversion_pair(request, supported, url_from=None, url_to=None):
-    session_from = request.session.get(SESSION_FROM_KEY)
-    session_to = request.session.get(SESSION_TO_KEY)
-    from_currency = _resolve_currency(
-        url_from,
-        supported,
-        session_from,
-        DEFAULT_FROM_CURRENCY,
-    )
-    to_currency = _resolve_currency(
-        url_to,
-        supported,
-        session_to,
-        DEFAULT_TO_CURRENCY,
-    )
-    return from_currency, to_currency
 
 
 def _quantize_money(value):
@@ -664,8 +635,10 @@ def converter_convert_api(request):
             status=503,
         )
 
-    request.session[SESSION_FROM_KEY] = from_currency
-    request.session[SESSION_TO_KEY] = to_currency
+    remember_conversion_pair(
+        request.session,
+        ConversionPair(from_currency, to_currency),
+    )
 
     payload = _rate_json(
         from_currency,
@@ -702,12 +675,14 @@ def currency_converter(request):
     url_to = request.GET.get("to") or None
     amount_query = request.GET.get("amount", "")
 
-    from_currency, to_currency = _resolve_conversion_pair(
-        request,
+    pair = resolve_conversion_pair(
+        request.session,
         supported,
         url_from=url_from,
         url_to=url_to,
     )
+    from_currency = pair.from_currency
+    to_currency = pair.to_currency
 
     rate = None
     rates_stale_date = None
