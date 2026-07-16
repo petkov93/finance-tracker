@@ -23,7 +23,7 @@ class AuthViewsTests(TestCase):
 
     def test_dashboard_redirects_anonymous_user(self):
         response = self.client.get(reverse("dashboard"))
-        self.assertRedirects(response, f"{reverse('login')}?next=/")
+        self.assertRedirects(response, f"{reverse('login')}?next=/dashboard/")
 
     def test_login_success(self):
         response = self.client.post(

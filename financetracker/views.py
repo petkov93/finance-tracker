@@ -46,6 +46,12 @@ from .services.display_conversion import convert_for_display
 from .services.statistics_aggregation import aggregate_for_statistics
 
 
+def landing(request):
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+    return render(request, "financetracker/landing.html")
+
+
 def login_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
