@@ -131,27 +131,37 @@ class CurrencyConverterViewTests(TestCase):
 
     def test_get_uses_stored_rates_without_mocking_get_rate(self):
         fetched_at = timezone.now()
-        ExchangeRate.objects.create(
-            base_currency="EUR",
-            quote_currency="CZK",
-            rate_date=date.today(),
-            rate=Decimal("25.0"),
-            fetched_at=fetched_at,
-        )
+        # Snapshot must be complete vs supported_currencies or latest-rate
+        # lookup will treat it as partial and refetch from Frankfurter.
+        for quote, rate in {
+            "CZK": Decimal("25.0"),
+            "BGN": Decimal("1.9558"),
+            "USD": Decimal("1.1"),
+        }.items():
+            ExchangeRate.objects.create(
+                base_currency="EUR",
+                quote_currency=quote,
+                rate_date=date.today(),
+                rate=rate,
+                fetched_at=fetched_at,
+            )
         metadata = SyncMetadata.get_singleton()
         metadata.supported_currencies = SUPPORTED.copy()
         metadata.last_successful_sync_date = date.today()
         metadata.save()
 
-        response = self.client.get(
-            reverse("currency_converter"),
-            {"from": "CZK", "to": "EUR"},
-        )
+        with patch(
+            "financetracker.services.currency.requests.get",
+            side_effect=AssertionError("stored rates must not hit the network"),
+        ):
+            response = self.client.get(
+                reverse("currency_converter"),
+                {"from": "CZK", "to": "EUR"},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["rate"], Decimal("1") / Decimal("25.0"))
         self.assertIsNone(response.context.get("rates_stale_date"))
-
     @patch("financetracker.views.get_rate")
     def test_get_shows_stale_rate_warning_when_rates_are_stale(self, mock_get_rate):
         yesterday = date.today() - timedelta(days=1)
@@ -205,21 +215,31 @@ class ConverterRateApiTests(TestCase):
 
     def test_valid_pair_returns_rate_from_stored_rates(self):
         fetched_at = timezone.now()
-        ExchangeRate.objects.create(
-            base_currency="EUR",
-            quote_currency="CZK",
-            rate_date=date.today(),
-            rate=Decimal("25.0"),
-            fetched_at=fetched_at,
-        )
+        for quote, rate in {
+            "CZK": Decimal("25.0"),
+            "BGN": Decimal("1.9558"),
+            "USD": Decimal("1.1"),
+        }.items():
+            ExchangeRate.objects.create(
+                base_currency="EUR",
+                quote_currency=quote,
+                rate_date=date.today(),
+                rate=rate,
+                fetched_at=fetched_at,
+            )
         metadata = SyncMetadata.get_singleton()
+        metadata.supported_currencies = SUPPORTED.copy()
         metadata.last_successful_sync_date = date.today()
-        metadata.save(update_fields=["last_successful_sync_date"])
+        metadata.save()
 
-        response = self.client.get(
-            reverse("converter_rate_api"),
-            {"from": "CZK", "to": "EUR"},
-        )
+        with patch(
+            "financetracker.services.currency.requests.get",
+            side_effect=AssertionError("stored rates must not hit the network"),
+        ):
+            response = self.client.get(
+                reverse("converter_rate_api"),
+                {"from": "CZK", "to": "EUR"},
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
