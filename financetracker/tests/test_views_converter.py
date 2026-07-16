@@ -4,7 +4,6 @@ import json
 from decimal import Decimal
 from unittest.mock import patch
 
-import requests
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -17,6 +16,7 @@ from financetracker.services.conversion_pair import (
 )
 from financetracker.services.currency import CurrencyConversionError, RateResult
 from financetracker.tests.factories import DEFAULT_PASSWORD, create_user
+from financetracker.tests.rate_source_support import FakeRateSource, override_rate_source
 
 SUPPORTED = {"CZK": "Czech Koruna", "EUR": "Euro", "BGN": "Bulgarian Lev", "USD": "US Dollar"}
 
@@ -115,10 +115,10 @@ class CurrencyConverterViewTests(TestCase):
         metadata.last_successful_sync_date = date.today()
         metadata.save()
 
-        with patch(
-            "financetracker.services.currency.requests.get",
-            side_effect=AssertionError("stored rates must not hit the network"),
-        ):
+        fake = FakeRateSource(
+            bulk_error=AssertionError("stored rates must not hit the network"),
+        )
+        with override_rate_source(fake):
             response = self.client.get(
                 reverse("currency_converter"),
                 {"from": "CZK", "to": "EUR"},
@@ -197,10 +197,10 @@ class ConverterRateApiTests(TestCase):
         metadata.last_successful_sync_date = date.today()
         metadata.save()
 
-        with patch(
-            "financetracker.services.currency.requests.get",
-            side_effect=AssertionError("stored rates must not hit the network"),
-        ):
+        fake = FakeRateSource(
+            bulk_error=AssertionError("stored rates must not hit the network"),
+        )
+        with override_rate_source(fake):
             response = self.client.get(
                 reverse("converter_rate_api"),
                 {"from": "CZK", "to": "EUR"},
@@ -223,12 +223,12 @@ class ConverterRateApiTests(TestCase):
             fetched_at=fetched_at,
         )
 
+        fake = FakeRateSource(
+            bulk_error=CurrencyConversionError("Failed to fetch bulk exchange rates"),
+        )
         with patch(
             "financetracker.services.currency.ensure_sync_if_stale",
-        ), patch(
-            "financetracker.services.currency.requests.get",
-            side_effect=requests.RequestException("network down"),
-        ):
+        ), override_rate_source(fake):
             response = self.client.get(
                 reverse("converter_rate_api"),
                 {"from": "CZK", "to": "EUR"},

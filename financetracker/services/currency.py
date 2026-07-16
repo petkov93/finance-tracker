@@ -4,26 +4,19 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Iterable
 
-import requests
 from django.db import OperationalError, transaction
 from django.db.models import Count
 from django.utils import timezone
 
 from financetracker.models import EUR_BASE_CURRENCY, ExchangeRate, SyncMetadata
+from financetracker.services.frankfurter_rate_source import FrankfurterRateSource
+from financetracker.services.rate_source import CurrencyConversionError, RateNotAvailableForDate
 
-FRANKFURTER_API_BASE = "https://api.frankfurter.dev"
-REQUEST_TIMEOUT_SECONDS = 3
 MAX_RATE_WALKBACK_DAYS = 7
 
 logger = logging.getLogger(__name__)
 
-
-class CurrencyConversionError(Exception):
-    """Raised when a currency rate cannot be fetched or parsed."""
-
-
-class _RateNotAvailableForDate(Exception):
-    """Raised when Frankfurter has no published rate for a specific date."""
+_rate_source = FrankfurterRateSource()
 
 
 @dataclass(frozen=True)
@@ -34,55 +27,6 @@ class RateResult:
 
 def _normalize_currency(code: str) -> str:
     return code.upper()
-
-
-def _parse_bulk_rates_response(data: object) -> dict[str, Decimal]:
-    if not isinstance(data, list) or not data or "rate" not in data[0]:
-        raise CurrencyConversionError("Missing rates in bulk response")
-
-    return {item["quote"].upper(): Decimal(str(item["rate"])) for item in data}
-
-
-def _fetch_bulk_rates(*, on_date: date | None = None) -> dict[str, Decimal]:
-    if on_date is None:
-        url = f"{FRANKFURTER_API_BASE}/v2/rates"
-    else:
-        url = f"{FRANKFURTER_API_BASE}/v2/rates?date={on_date.isoformat()}"
-
-    try:
-        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
-    except requests.RequestException as exc:
-        raise CurrencyConversionError("Failed to fetch bulk exchange rates") from exc
-
-    if response.status_code == 404:
-        raise _RateNotAvailableForDate()
-
-    try:
-        response.raise_for_status()
-        data = response.json()
-    except requests.RequestException as exc:
-        raise CurrencyConversionError("Failed to fetch bulk exchange rates") from exc
-    except ValueError as exc:
-        raise CurrencyConversionError("Invalid JSON in bulk rates response") from exc
-
-    return _parse_bulk_rates_response(data)
-
-
-def _fetch_supported_currencies_from_api() -> dict[str, str]:
-    url = f"{FRANKFURTER_API_BASE}/v2/currencies"
-    try:
-        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        data = response.json()
-    except requests.RequestException as exc:
-        raise CurrencyConversionError("Failed to fetch supported currencies") from exc
-    except ValueError as exc:
-        raise CurrencyConversionError("Invalid JSON in currencies response") from exc
-
-    if not isinstance(data, list) or not data:
-        raise CurrencyConversionError("Missing currencies in response")
-
-    return {currency["iso_code"].upper(): currency["name"] for currency in data}
 
 
 def _expected_quote_count() -> int | None:
@@ -133,8 +77,8 @@ def _ensure_date_snapshot(rate_date: date, *, force: bool = False) -> None:
     for days_back in range(MAX_RATE_WALKBACK_DAYS + 1):
         lookup_date = rate_date - timedelta(days=days_back)
         try:
-            rates = _fetch_bulk_rates(on_date=lookup_date)
-        except _RateNotAvailableForDate:
+            rates = _rate_source.fetch_bulk_rates(on_date=lookup_date)
+        except RateNotAvailableForDate:
             continue
 
         _upsert_exchange_rates(rate_date, rates)
@@ -215,8 +159,8 @@ def ensure_sync_if_stale() -> None:
 
 def sync_latest_rates() -> None:
     today = date.today()
-    rates = _fetch_bulk_rates()
-    currencies = _fetch_supported_currencies_from_api()
+    rates = _rate_source.fetch_bulk_rates()
+    currencies = _rate_source.fetch_supported_currencies()
 
     _upsert_exchange_rates(today, rates)
 
@@ -486,4 +430,4 @@ def get_supported_currencies() -> dict[str, str]:
     if metadata.supported_currencies:
         return dict(metadata.supported_currencies)
 
-    return _fetch_supported_currencies_from_api()
+    return _rate_source.fetch_supported_currencies()
