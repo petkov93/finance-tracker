@@ -93,91 +93,164 @@
 
 {% if not conversion_degraded %}
 <script>
-  const FONT_UI = "'Source Sans 3', system-ui, sans-serif";
-  const FONT_MONO = "'IBM Plex Mono', monospace";
-  const INCOME_COLOR  = "rgba(45, 106, 79, 0.88)";
-  const EXPENSE_COLOR = "rgba(193, 68, 14, 0.88)";
-  const GRID_COLOR    = "rgba(28, 25, 23, 0.08)";
-  const TICK_COLOR    = "#78716c";
-  const LEGEND_COLOR  = "#44403c";
-  const SURFACE_COLOR = "#fffdf8";
-  const PIE_COLORS = [
-    "#0f766e", "#b45309", "#2d6a4f", "#c1440e", "#1d4ed8",
-    "#9d174d", "#5b21b6", "#0e7490", "#ca8a04", "#4d7c0f"
-  ];
+  (function () {
+    const FONT_UI = "'Source Sans 3', system-ui, sans-serif";
+    const FONT_MONO = "'IBM Plex Mono', monospace";
+    const defaultCurrency = "{{ default_currency }}";
+    const monthLabels = {{ month_labels|safe }};
+    const monthlyIncome = {{ monthly_income|safe }};
+    const monthlyExpense = {{ monthly_expense|safe }};
+    const expLabels = {{ cat_labels|safe }};
+    const expValues = {{ cat_values|safe }};
+    const incLabels = {{ income_cat_labels|safe }};
+    const incValues = {{ income_cat_values|safe }};
 
-  const monthlyCtx = document.getElementById("monthlyChart").getContext("2d");
-  new Chart(monthlyCtx, {
-    type: "bar",
-    data: {
-      labels: {{ month_labels|safe }},
-      datasets: [
-        { label: "Income",  data: {{ monthly_income|safe }},  backgroundColor: INCOME_COLOR,  borderRadius: 4 },
-        { label: "Expense", data: {{ monthly_expense|safe }}, backgroundColor: EXPENSE_COLOR, borderRadius: 4 }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: LEGEND_COLOR, font: { family: FONT_UI, size: 12 } } }
-      },
-      scales: {
-        x: { ticks: { color: TICK_COLOR, font: { family: FONT_UI } }, grid: { color: GRID_COLOR } },
-        y: {
-          ticks: {
-            color: TICK_COLOR,
-            font: { family: FONT_MONO, size: 11 },
-            callback: v => v.toLocaleString("cs-CZ") + " {{ default_currency }}"
-          },
-          grid: { color: GRID_COLOR },
-          beginAtZero: true
-        }
+    function cssVar(name) {
+      if (window.FinanceTrackerTheme && window.FinanceTrackerTheme.readCssVar) {
+        return window.FinanceTrackerTheme.readCssVar(name);
+      }
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function chartPalette() {
+      return {
+        income: cssVar("--chart-income"),
+        expense: cssVar("--chart-expense"),
+        grid: cssVar("--chart-grid"),
+        tick: cssVar("--chart-tick"),
+        legend: cssVar("--chart-legend"),
+        surface: cssVar("--chart-surface"),
+        pie: [
+          cssVar("--chart-pie-1"),
+          cssVar("--chart-pie-2"),
+          cssVar("--chart-pie-3"),
+          cssVar("--chart-pie-4"),
+          cssVar("--chart-pie-5"),
+          cssVar("--chart-pie-6"),
+          cssVar("--chart-pie-7"),
+          cssVar("--chart-pie-8"),
+          cssVar("--chart-pie-9"),
+          cssVar("--chart-pie-10"),
+        ],
+      };
+    }
+
+    let monthlyChart = null;
+    let expensePieChart = null;
+    let incomePieChart = null;
+
+    function applyChartTheme() {
+      const colors = chartPalette();
+      if (monthlyChart) {
+        monthlyChart.data.datasets[0].backgroundColor = colors.income;
+        monthlyChart.data.datasets[1].backgroundColor = colors.expense;
+        monthlyChart.options.plugins.legend.labels.color = colors.legend;
+        monthlyChart.options.scales.x.ticks.color = colors.tick;
+        monthlyChart.options.scales.x.grid.color = colors.grid;
+        monthlyChart.options.scales.y.ticks.color = colors.tick;
+        monthlyChart.options.scales.y.grid.color = colors.grid;
+        monthlyChart.update("none");
+      }
+      if (expensePieChart) {
+        expensePieChart.data.datasets[0].backgroundColor = colors.pie;
+        expensePieChart.data.datasets[0].borderColor = colors.surface;
+        expensePieChart.options.plugins.legend.labels.color = colors.legend;
+        expensePieChart.update("none");
+      }
+      if (incomePieChart) {
+        incomePieChart.data.datasets[0].backgroundColor = colors.pie;
+        incomePieChart.data.datasets[0].borderColor = colors.surface;
+        incomePieChart.options.plugins.legend.labels.color = colors.legend;
+        incomePieChart.update("none");
       }
     }
-  });
 
-  const expLabels = {{ cat_labels|safe }};
-  const expValues = {{ cat_values|safe }};
-  if (expLabels.length) {
-    const expCtx = document.getElementById("expensePieChart").getContext("2d");
-    new Chart(expCtx, {
-      type: "doughnut",
+    const colors = chartPalette();
+    const monthlyCtx = document.getElementById("monthlyChart").getContext("2d");
+    monthlyChart = new Chart(monthlyCtx, {
+      type: "bar",
       data: {
-        labels: expLabels,
-        datasets: [{ data: expValues, backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: SURFACE_COLOR }]
+        labels: monthLabels,
+        datasets: [
+          { label: "Income", data: monthlyIncome, backgroundColor: colors.income, borderRadius: 4 },
+          { label: "Expense", data: monthlyExpense, backgroundColor: colors.expense, borderRadius: 4 },
+        ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom", labels: { color: LEGEND_COLOR, font: { family: FONT_UI, size: 11 }, padding: 14 } },
-          tooltip: { callbacks: { label: c => " " + c.parsed.toLocaleString("cs-CZ") + " {{ default_currency }}" } }
-        }
-      }
-    });
-  }
-
-  const incLabels = {{ income_cat_labels|safe }};
-  const incValues = {{ income_cat_values|safe }};
-  if (incLabels.length) {
-    const incCtx = document.getElementById("incomePieChart").getContext("2d");
-    new Chart(incCtx, {
-      type: "doughnut",
-      data: {
-        labels: incLabels,
-        datasets: [{ data: incValues, backgroundColor: PIE_COLORS, borderWidth: 2, borderColor: SURFACE_COLOR }]
+          legend: { labels: { color: colors.legend, font: { family: FONT_UI, size: 12 } } },
+        },
+        scales: {
+          x: { ticks: { color: colors.tick, font: { family: FONT_UI } }, grid: { color: colors.grid } },
+          y: {
+            ticks: {
+              color: colors.tick,
+              font: { family: FONT_MONO, size: 11 },
+              callback: (v) => v.toLocaleString("cs-CZ") + " " + defaultCurrency,
+            },
+            grid: { color: colors.grid },
+            beginAtZero: true,
+          },
+        },
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "bottom", labels: { color: LEGEND_COLOR, font: { family: FONT_UI, size: 11 }, padding: 14 } },
-          tooltip: { callbacks: { label: c => " " + c.parsed.toLocaleString("cs-CZ") + " {{ default_currency }}" } }
-        }
-      }
     });
-  }
+
+    if (expLabels.length) {
+      const expCtx = document.getElementById("expensePieChart").getContext("2d");
+      expensePieChart = new Chart(expCtx, {
+        type: "doughnut",
+        data: {
+          labels: expLabels,
+          datasets: [{ data: expValues, backgroundColor: colors.pie, borderWidth: 2, borderColor: colors.surface }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: { color: colors.legend, font: { family: FONT_UI, size: 11 }, padding: 14 },
+            },
+            tooltip: {
+              callbacks: {
+                label: (c) => " " + c.parsed.toLocaleString("cs-CZ") + " " + defaultCurrency,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    if (incLabels.length) {
+      const incCtx = document.getElementById("incomePieChart").getContext("2d");
+      incomePieChart = new Chart(incCtx, {
+        type: "doughnut",
+        data: {
+          labels: incLabels,
+          datasets: [{ data: incValues, backgroundColor: colors.pie, borderWidth: 2, borderColor: colors.surface }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: { color: colors.legend, font: { family: FONT_UI, size: 11 }, padding: 14 },
+            },
+            tooltip: {
+              callbacks: {
+                label: (c) => " " + c.parsed.toLocaleString("cs-CZ") + " " + defaultCurrency,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    window.addEventListener("themechange", applyChartTheme);
+  })();
 </script>
 {% endif %}
 </div>

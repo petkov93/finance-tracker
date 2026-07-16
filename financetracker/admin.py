@@ -5,7 +5,7 @@ from .models import Category, InvestmentEntry, Transaction, UserProfile
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ["user", "default_currency"]
+    list_display = ["user", "default_currency", "theme"]
     search_fields = ["user__username"]
     raw_id_fields = ["user"]
 

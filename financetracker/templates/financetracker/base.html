@@ -1,11 +1,24 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme-preference="{{ theme_preference }}">
 <head>
   <meta charset="UTF-8" />
 <meta name="google-site-verification" content="sfg6E8dURBzos-CLVmgKAz5eXeOkC1BNm-lNO7vXPl0" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Finance Tracker{% endblock %}</title>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var pref = root.getAttribute("data-theme-preference") || "system";
+      function resolve(preference) {
+        if (preference === "warm" || preference === "night") return preference;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "warm";
+      }
+      var theme = resolve(pref);
+      root.setAttribute("data-theme", theme);
+      root.style.colorScheme = theme === "night" ? "dark" : "light";
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -89,6 +102,7 @@
       <p>Finance Tracker &mdash; track every koruna, every day.</p>
     </footer>
   </div>
+  <script src="{% static 'financetracker/js/theme.js' %}"></script>
   {% if user.is_authenticated %}
   <script src="{% static 'financetracker/js/nav.js' %}"></script>
   {% endif %}

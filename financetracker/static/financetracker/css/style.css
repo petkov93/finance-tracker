@@ -1,7 +1,8 @@
 /* ===== Warm Ledger — Design tokens ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
+:root,
+[data-theme="warm"] {
   --bg:           #f6f1e8;
   --bg-ruled:     repeating-linear-gradient(
                     180deg,
@@ -26,6 +27,28 @@
   --danger-bg:    rgba(185, 28, 28, 0.06);
   --shadow:       0 1px 2px rgba(28, 25, 23, 0.06), 0 4px 16px rgba(28, 25, 23, 0.05);
   --shadow-lg:    0 8px 32px rgba(28, 25, 23, 0.08);
+  --overlay:      rgba(28, 25, 23, 0.35);
+  --hover-wash:   rgba(28, 25, 23, 0.04);
+  --topbar-glass: rgba(255, 253, 248, 0.6);
+  --btn-on-accent: #fff;
+  --grain-opacity: 0.35;
+  --grain-blend: multiply;
+  --chart-income:  rgba(45, 106, 79, 0.88);
+  --chart-expense: rgba(193, 68, 14, 0.88);
+  --chart-grid:    rgba(28, 25, 23, 0.08);
+  --chart-tick:    #78716c;
+  --chart-legend:  #44403c;
+  --chart-surface: #fffdf8;
+  --chart-pie-1: #0f766e;
+  --chart-pie-2: #b45309;
+  --chart-pie-3: #2d6a4f;
+  --chart-pie-4: #c1440e;
+  --chart-pie-5: #1d4ed8;
+  --chart-pie-6: #9d174d;
+  --chart-pie-7: #5b21b6;
+  --chart-pie-8: #0e7490;
+  --chart-pie-9: #ca8a04;
+  --chart-pie-10: #4d7c0f;
   --radius:       10px;
   --radius-sm:    6px;
   --font-display: "Fraunces", Georgia, serif;
@@ -36,6 +59,55 @@
   --sidebar-w:           var(--sidebar-w-expanded);
   --topbar-h:            56px;
   --ease:                cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-theme="night"] {
+  --bg:           #1a1612;
+  --bg-ruled:     repeating-linear-gradient(
+                    180deg,
+                    transparent,
+                    transparent 27px,
+                    rgba(245, 230, 211, 0.04) 27px,
+                    rgba(245, 230, 211, 0.04) 28px
+                  );
+  --surface:      #241f1a;
+  --surface-elev: #2c261f;
+  --ink:          #f5e6d3;
+  --muted:        #a89f94;
+  --border:       #3d342b;
+  --income:       #5a9a78;
+  --income-bg:    rgba(90, 154, 120, 0.16);
+  --expense:      #e07a4a;
+  --expense-bg:   rgba(224, 122, 74, 0.14);
+  --accent:       #2dd4bf;
+  --accent-h:     #5eead4;
+  --accent-bg:    rgba(45, 212, 191, 0.14);
+  --danger:       #f87171;
+  --danger-bg:    rgba(248, 113, 113, 0.12);
+  --shadow:       0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.28);
+  --shadow-lg:    0 8px 32px rgba(0, 0, 0, 0.4);
+  --overlay:      rgba(0, 0, 0, 0.55);
+  --hover-wash:   rgba(245, 230, 211, 0.05);
+  --topbar-glass: rgba(36, 31, 26, 0.75);
+  --btn-on-accent: #1a1612;
+  --grain-opacity: 0.2;
+  --grain-blend: soft-light;
+  --chart-income:  rgba(90, 154, 120, 0.9);
+  --chart-expense: rgba(224, 122, 74, 0.9);
+  --chart-grid:    rgba(245, 230, 211, 0.08);
+  --chart-tick:    #a89f94;
+  --chart-legend:  #e7dccb;
+  --chart-surface: #241f1a;
+  --chart-pie-1: #2dd4bf;
+  --chart-pie-2: #e7a857;
+  --chart-pie-3: #5a9a78;
+  --chart-pie-4: #e07a4a;
+  --chart-pie-5: #60a5fa;
+  --chart-pie-6: #f472b6;
+  --chart-pie-7: #c4b5fd;
+  --chart-pie-8: #22d3ee;
+  --chart-pie-9: #fbbf24;
+  --chart-pie-10: #a3e635;
 }
 
 html {
@@ -66,9 +138,9 @@ a { color: inherit; text-decoration: none; }
   position: fixed;
   inset: 0;
   z-index: 9999;
-  opacity: 0.35;
+  opacity: var(--grain-opacity);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
-  mix-blend-mode: multiply;
+  mix-blend-mode: var(--grain-blend);
 }
 
 /* ===== App shell layout ===== */
@@ -180,7 +252,7 @@ body.sidebar-mobile-open .sidebar-toggle .icon-close { display: block; }
   position: fixed;
   inset: 0;
   top: var(--topbar-h);
-  background: rgba(28, 25, 23, 0.35);
+  background: var(--overlay);
   z-index: 150;
 }
 
@@ -257,7 +329,7 @@ body.sidebar-collapsed .sidebar-link.active::before {
 
 .sidebar-link:hover {
   color: var(--ink);
-  background: rgba(28, 25, 23, 0.04);
+  background: var(--hover-wash);
 }
 
 .sidebar-link.active {
@@ -319,7 +391,7 @@ body.sidebar-collapsed .sidebar-link.active::before {
   color: var(--muted);
   font-size: 0.8rem;
   border-top: 1px solid var(--border);
-  background: rgba(255, 253, 248, 0.6);
+  background: var(--topbar-glass);
 }
 
 /* ===== Motion ===== */
@@ -552,13 +624,13 @@ body.sidebar-collapsed .sidebar-link.active::before {
 
 .btn-primary {
   background: var(--accent);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.25);
+  color: var(--btn-on-accent);
+  box-shadow: 0 2px 8px var(--accent-bg);
 }
 
 .btn-primary:hover {
   background: var(--accent-h);
-  box-shadow: 0 4px 12px rgba(15, 118, 110, 0.3);
+  box-shadow: 0 4px 12px var(--accent-bg);
 }
 
 .btn-ghost {
@@ -688,7 +760,7 @@ body.sidebar-collapsed .sidebar-link.active::before {
 }
 
 .transaction-row:last-child { border-bottom: none; }
-.transaction-row:hover { background: rgba(28, 25, 23, 0.02); }
+.transaction-row:hover { background: var(--hover-wash); }
 
 .transaction-left {
   display: flex;
@@ -1013,7 +1085,7 @@ body.sidebar-collapsed .sidebar-link.active::before {
 #type-expense:checked ~ label[for="type-expense"],
 #type-invested:checked ~ label[for="type-invested"],
 #type-profit:checked   ~ label[for="type-profit"] {
-  color: #fff;
+  color: var(--btn-on-accent);
   box-shadow: var(--shadow);
 }
 
@@ -1137,7 +1209,7 @@ body.sidebar-collapsed .sidebar-link.active::before {
   align-items: center;
   justify-content: center;
   padding: 3rem 2.5rem;
-  background: linear-gradient(145deg, #e8dfd0 0%, #f0e8db 50%, var(--bg) 100%);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--border) 55%, var(--bg)) 0%, var(--bg) 100%);
   border-right: 1px solid var(--border);
 }
 
@@ -1226,6 +1298,10 @@ body.sidebar-collapsed .sidebar-link.active::before {
 
 .settings-section { margin-bottom: 0; }
 
+.settings-section-appearance {
+  grid-column: 1 / -1;
+}
+
 .settings-section-title {
   font-family: var(--font-display);
   font-size: 1.1rem;
@@ -1240,8 +1316,102 @@ body.sidebar-collapsed .sidebar-link.active::before {
 }
 
 .danger-zone .form-card {
-  border-color: rgba(193, 68, 14, 0.35);
+  border-color: color-mix(in srgb, var(--expense) 35%, var(--border));
   background: linear-gradient(180deg, var(--surface) 0%, var(--danger-bg) 100%);
+}
+
+.theme-swatches {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-elev);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.theme-swatch:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.theme-swatch.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.theme-swatch-preview {
+  position: relative;
+  display: block;
+  height: 4.25rem;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.theme-swatch-bg {
+  position: absolute;
+  inset: 0;
+}
+
+.theme-swatch-accent {
+  position: absolute;
+  left: 0.7rem;
+  bottom: 0.7rem;
+  width: 1.65rem;
+  height: 0.55rem;
+  border-radius: 999px;
+}
+
+.theme-swatch-amount {
+  position: absolute;
+  right: 0.7rem;
+  bottom: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.theme-swatch-warm .theme-swatch-bg { background: #f6f1e8; }
+.theme-swatch-warm .theme-swatch-accent { background: #0f766e; }
+.theme-swatch-warm .theme-swatch-amount { color: #1c1917; }
+
+.theme-swatch-night .theme-swatch-bg { background: #1a1612; }
+.theme-swatch-night .theme-swatch-accent { background: #2dd4bf; }
+.theme-swatch-night .theme-swatch-amount { color: #f5e6d3; }
+
+.theme-swatch-system .theme-swatch-bg {
+  background: linear-gradient(90deg, #f6f1e8 50%, #1a1612 50%);
+}
+.theme-swatch-system .theme-swatch-accent {
+  background: linear-gradient(90deg, #0f766e 50%, #2dd4bf 50%);
+}
+.theme-swatch-system .theme-swatch-amount {
+  right: 0.55rem;
+  color: #f5e6d3;
+  text-shadow: 0 0 0.35rem rgba(0, 0, 0, 0.55);
+}
+
+.theme-swatch-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .theme-swatches {
+    grid-template-columns: 1fr;
+  }
 }
 
 .danger-action {

@@ -11,6 +11,7 @@ class UserProfileTests(TestCase):
         profile = ensure_user_profile(user)
 
         self.assertEqual(profile.default_currency, "CZK")
+        self.assertEqual(profile.theme, "system")
         self.assertEqual(UserProfile.objects.filter(user=user).count(), 1)
 
     def test_ensure_user_profile_returns_existing_without_overwrite(self):
