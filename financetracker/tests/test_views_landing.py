@@ -17,6 +17,9 @@ class LandingViewsTests(TestCase):
             response,
             "Income, spending, investments — finally in one place.",
         )
+        self.assertContains(response, "Display conversion")
+        self.assertContains(response, "Transaction currency")
+        self.assertContains(response, "Default currency")
         self.assertContains(response, reverse("register"))
         self.assertContains(response, reverse("login"))
         self.assertContains(response, 'data-landing-shot="dashboard"')
@@ -32,8 +35,10 @@ class LandingViewsTests(TestCase):
         response = self.client.get("/")
         self.assertRedirects(response, reverse("dashboard"))
 
-    def test_dashboard_lives_at_dashboard_path(self):
+    def test_dashboard_lives_at_dashboard_path_and_requires_login(self):
         self.assertEqual(reverse("dashboard"), "/dashboard/")
+        anonymous = self.client.get(reverse("dashboard"))
+        self.assertRedirects(anonymous, f"{reverse('login')}?next=/dashboard/")
         self.client.login(username=self.user.username, password=DEFAULT_PASSWORD)
         response = self.client.get(reverse("dashboard"))
         self.assertEqual(response.status_code, 200)

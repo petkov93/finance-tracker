@@ -1,7 +1,7 @@
 {% extends "financetracker/base.html" %}
 {% load static %}
 
-{% block title %}Finance Tracker — Income, spending, and investments in one place{% endblock %}
+{% block title %}Finance Tracker — Your personal ledger{% endblock %}
 {% block body_class %} landing{% endblock %}
 
 {% block content %}
@@ -108,7 +108,7 @@
     <div class="landing-cta-inner">
       <h2 id="landing-cta-title" class="landing-cta-title">Open your ledger</h2>
       <p class="landing-cta-text">
-        Create a free account and start tracking income, spending, and investments in one place.
+        Create a free account and start tracking day-to-day money in one personal ledger.
       </p>
       <a href="{% url 'register' %}" class="btn btn-primary">Sign up</a>
     </div>
