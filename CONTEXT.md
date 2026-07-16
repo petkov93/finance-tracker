@@ -1,6 +1,6 @@
 # Finance Tracker
 
-Personal finance tracking for day-to-day income, expenses, and investments. Transaction amounts are stored in their native currency; dashboard and statistics present them in each user's default currency through display conversion.
+Personal finance tracking for day-to-day income, expenses, and investments. Transaction amounts are stored in their Transaction currency; dashboard and statistics present them in each user's Default currency through Display conversion.
 
 ## Language
 

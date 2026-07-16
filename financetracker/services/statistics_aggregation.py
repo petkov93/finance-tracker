@@ -6,6 +6,7 @@ from financetracker.models import Transaction
 from financetracker.services.display_conversion import (
     DisplayConversionResult,
     DisplayTransactionRow,
+    RowConversionOutcome,
 )
 
 
@@ -36,15 +37,11 @@ def _empty_result() -> StatisticsAggregationResult:
     )
 
 
-def _row_contributes_to_statistics(
-    row: DisplayTransactionRow,
-    default_currency: str,
-) -> bool:
-    transaction = row.transaction
-    return (
-        transaction.currency == default_currency
-        or row.show_native_footnote
-    )
+def _row_contributes_to_statistics(row: DisplayTransactionRow) -> bool:
+    return row.conversion_outcome in {
+        RowConversionOutcome.IN_DEFAULT_CURRENCY,
+        RowConversionOutcome.CONVERTED,
+    }
 
 
 def _sorted_category_series(
@@ -71,7 +68,7 @@ def aggregate_for_statistics(
     income_by_category: dict[str, Decimal] = {}
 
     for row in display.rows:
-        if not _row_contributes_to_statistics(row, display.default_currency):
+        if not _row_contributes_to_statistics(row):
             continue
 
         transaction = row.transaction

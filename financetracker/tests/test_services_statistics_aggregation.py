@@ -1,15 +1,30 @@
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase
 
 from financetracker.models import Transaction
+from financetracker.services.currency import RateResult
 from financetracker.services.display_conversion import (
     DisplayConversionResult,
     DisplayTransactionRow,
+    RowConversionOutcome,
+    convert_for_display,
 )
 from financetracker.services.statistics_aggregation import aggregate_for_statistics
 from financetracker.tests.factories import create_category, create_transaction, create_user
+
+
+def _mapped_get_rates(rate_by_key: dict):
+    def fake(keys):
+        return {
+            key: RateResult(rate=rate_by_key[key])
+            for key in keys
+            if key in rate_by_key
+        }
+
+    return fake
 
 
 def _display(
@@ -34,7 +49,7 @@ def _row(
     *,
     primary_amount=None,
     primary_currency=None,
-    show_native_footnote=False,
+    conversion_outcome=RowConversionOutcome.IN_DEFAULT_CURRENCY,
 ):
     amount = primary_amount if primary_amount is not None else transaction.amount
     currency = primary_currency if primary_currency is not None else transaction.currency
@@ -42,9 +57,9 @@ def _row(
         transaction=transaction,
         primary_amount=amount,
         primary_currency=currency,
-        native_amount=transaction.amount,
-        native_currency=transaction.currency,
-        show_native_footnote=show_native_footnote,
+        transaction_amount=transaction.amount,
+        transaction_currency=transaction.currency,
+        conversion_outcome=conversion_outcome,
     )
 
 
@@ -60,7 +75,7 @@ class StatisticsAggregationTests(TestCase):
             type=Transaction.INCOME,
         )
         display = _display(
-            [_row(transaction)],
+            [_row(transaction, conversion_outcome=RowConversionOutcome.EXCLUDED)],
             conversion_degraded=True,
         )
 
@@ -93,8 +108,8 @@ class StatisticsAggregationTests(TestCase):
         )
         display = _display(
             [
-                _row(income, primary_currency="CZK"),
-                _row(expense, primary_currency="CZK"),
+                _row(income, conversion_outcome=RowConversionOutcome.IN_DEFAULT_CURRENCY),
+                _row(expense, conversion_outcome=RowConversionOutcome.IN_DEFAULT_CURRENCY),
             ]
         )
 
@@ -161,7 +176,7 @@ class StatisticsAggregationTests(TestCase):
         self.assertTrue(result.has_expense_categories)
         self.assertTrue(result.has_income_categories)
 
-    def test_skips_foreign_currency_rows_without_native_footnote(self):
+    def test_skips_excluded_foreign_currency_rows(self):
         included = create_transaction(
             self.user,
             amount=Decimal("100.00"),
@@ -180,12 +195,15 @@ class StatisticsAggregationTests(TestCase):
         )
         display = _display(
             [
-                _row(included, primary_currency="CZK"),
+                _row(
+                    included,
+                    conversion_outcome=RowConversionOutcome.IN_DEFAULT_CURRENCY,
+                ),
                 _row(
                     skipped,
                     primary_amount=Decimal("10.00"),
                     primary_currency="EUR",
-                    show_native_footnote=False,
+                    conversion_outcome=RowConversionOutcome.EXCLUDED,
                 ),
             ]
         )
@@ -197,7 +215,7 @@ class StatisticsAggregationTests(TestCase):
         self.assertEqual(result.expense_category_labels, ["Food"])
         self.assertEqual(result.expense_category_values, [Decimal("100.00")])
 
-    def test_includes_converted_rows_with_native_footnote(self):
+    def test_includes_converted_and_in_default_rows_via_display_pipeline(self):
         converted = create_transaction(
             self.user,
             amount=Decimal("10.00"),
@@ -214,16 +232,21 @@ class StatisticsAggregationTests(TestCase):
             category=create_category(name="Food"),
             transaction_date=date(2025, 2, 20),
         )
-        display = _display(
-            [
-                _row(
-                    converted,
-                    primary_amount=Decimal("250.00"),
-                    primary_currency="CZK",
-                    show_native_footnote=True,
-                ),
-                _row(local, primary_currency="CZK"),
-            ]
+        rates = {("EUR", "CZK", date(2025, 2, 5)): Decimal("25.00")}
+
+        with patch(
+            "financetracker.services.display_conversion.get_rates",
+            side_effect=_mapped_get_rates(rates),
+        ):
+            display = convert_for_display([converted, local], "CZK")
+
+        self.assertEqual(
+            display.rows[0].conversion_outcome,
+            RowConversionOutcome.CONVERTED,
+        )
+        self.assertEqual(
+            display.rows[1].conversion_outcome,
+            RowConversionOutcome.IN_DEFAULT_CURRENCY,
         )
 
         result = aggregate_for_statistics(display)
