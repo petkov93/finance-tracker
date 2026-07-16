@@ -2,20 +2,14 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 
+from financetracker.services.theme_constants import (
+    DEFAULT_THEME_PREFERENCE,
+    THEME_CHOICES,
+)
+
 DEFAULT_PROFILE_CURRENCY = "CZK"
 EUR_BASE_CURRENCY = "EUR"
-
-THEME_WARM = "warm"
-THEME_NIGHT = "night"
-THEME_SYSTEM = "system"
-THEME_CHOICES = [
-    (THEME_WARM, "Warm Ledger"),
-    (THEME_NIGHT, "Night Ledger"),
-    (THEME_SYSTEM, "System"),
-]
-DEFAULT_PROFILE_THEME = THEME_SYSTEM
-THEME_COOKIE_NAME = "ft_theme"
-THEME_VALUES = {THEME_WARM, THEME_NIGHT, THEME_SYSTEM}
+DEFAULT_PROFILE_THEME = DEFAULT_THEME_PREFERENCE
 
 
 class ExchangeRate(models.Model):
@@ -79,16 +73,6 @@ def ensure_user_profile(user):
         },
     )
     return profile
-
-
-def theme_cookie_kwargs(theme: str) -> dict:
-    return {
-        "key": THEME_COOKIE_NAME,
-        "value": theme,
-        "max_age": 60 * 60 * 24 * 365,
-        "samesite": "Lax",
-        "httponly": False,
-    }
 
 
 class Category(models.Model):
