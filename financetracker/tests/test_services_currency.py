@@ -495,3 +495,66 @@ class StartupSyncLockTests(TestCase):
         self.assertEqual(mock_get.call_count, 2)
         self.assertTrue(ExchangeRate.objects.filter(rate_date=past).exists())
         self.assertTrue(ExchangeRate.objects.filter(rate_date=other_past).exists())
+
+
+class IncompleteSnapshotTests(TestCase):
+    @patch("financetracker.services.currency.requests.get")
+    def test_partial_date_snapshot_is_refetched_for_missing_quote(self, mock_get):
+        """Alphabetical-prefix leftovers must not block a full bulk refill."""
+        past_date = date.today() - timedelta(days=30)
+        fetched_at = timezone.now()
+        for quote in ["AED", "AFN", "ALL", "AMD"]:
+            ExchangeRate.objects.create(
+                base_currency="EUR",
+                quote_currency=quote,
+                rate_date=past_date,
+                rate=Decimal("1.0"),
+                fetched_at=fetched_at,
+            )
+        metadata = SyncMetadata.get_singleton()
+        metadata.supported_currencies = {
+            "EUR": "Euro",
+            "AED": "UAE Dirham",
+            "AFN": "Afghan Afghani",
+            "ALL": "Albanian Lek",
+            "AMD": "Armenian Dram",
+            "CZK": "Czech Koruna",
+            "USD": "US Dollar",
+        }
+        metadata.save(update_fields=["supported_currencies"])
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = [
+            {
+                "date": past_date.isoformat(),
+                "base": "EUR",
+                "quote": quote,
+                "rate": rate,
+            }
+            for quote, rate in [
+                ("AED", 4.0),
+                ("AFN", 80.0),
+                ("ALL", 100.0),
+                ("AMD", 420.0),
+                ("CZK", 25.0),
+                ("USD", 1.1),
+            ]
+        ]
+        mock_get.return_value = mock_response
+
+        result = get_rate("EUR", "CZK", on_date=past_date)
+
+        self.assertEqual(result.rate, Decimal("25.0"))
+        mock_get.assert_called_once()
+        self.assertEqual(
+            ExchangeRate.objects.filter(rate_date=past_date).count(),
+            6,
+        )
+        self.assertTrue(
+            ExchangeRate.objects.filter(
+                rate_date=past_date,
+                quote_currency="CZK",
+            ).exists()
+        )

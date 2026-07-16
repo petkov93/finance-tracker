@@ -4,11 +4,7 @@ from decimal import Decimal
 from typing import Iterable
 
 from financetracker.models import Transaction
-from financetracker.services.currency import (
-    CurrencyConversionError,
-    ensure_rate_snapshots,
-    get_rate,
-)
+from financetracker.services.currency import get_rates
 
 
 @dataclass(frozen=True)
@@ -48,43 +44,29 @@ def _collect_rate_keys(
     return keys
 
 
-def _prefetch_rate_snapshots(keys: set[tuple[str, str, date]]) -> None:
-    historical_dates = {
-        on_date for _, _, on_date in keys if on_date < date.today()
-    }
-    for on_date in historical_dates:
-        try:
-            ensure_rate_snapshots([on_date])
-        except CurrencyConversionError:
-            continue
-
-
 def _fetch_rates(
     keys: set[tuple[str, str, date]],
 ) -> tuple[dict[tuple[str, str, date], Decimal], bool, date | None]:
-    _prefetch_rate_snapshots(keys)
+    resolved = get_rates(keys)
 
     rates: dict[tuple[str, str, date], Decimal] = {}
     conversion_degraded = False
     rates_stale_date: date | None = None
 
     for from_currency, to_currency, on_date in keys:
-        try:
-            result = get_rate(
-                from_currency,
-                to_currency,
-                on_date=on_date,
-            )
-            rates[(from_currency, to_currency, on_date)] = result.rate
-            if result.stale_date is not None and _requires_today_rate(on_date):
-                rates_stale_date = (
-                    max(rates_stale_date, result.stale_date)
-                    if rates_stale_date is not None
-                    else result.stale_date
-                )
-        except CurrencyConversionError:
+        result = resolved.get((from_currency, to_currency, on_date))
+        if result is None:
             if _requires_today_rate(on_date):
                 conversion_degraded = True
+            continue
+
+        rates[(from_currency, to_currency, on_date)] = result.rate
+        if result.stale_date is not None and _requires_today_rate(on_date):
+            rates_stale_date = (
+                max(rates_stale_date, result.stale_date)
+                if rates_stale_date is not None
+                else result.stale_date
+            )
 
     return rates, conversion_degraded, rates_stale_date
 

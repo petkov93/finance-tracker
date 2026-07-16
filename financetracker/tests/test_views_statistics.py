@@ -7,13 +7,20 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import Transaction, UserProfile, ensure_user_profile
-from financetracker.services.currency import CurrencyConversionError, RateResult
+from financetracker.services.currency import RateResult
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_category,
     create_transaction,
     create_user,
 )
+
+
+def _constant_get_rates(rate, stale_date=None):
+    def fake(keys):
+        return {key: RateResult(rate=rate, stale_date=stale_date) for key in keys}
+
+    return fake
 
 
 class StatisticsViewsTests(TestCase):
@@ -133,8 +140,8 @@ class StatisticsViewsTests(TestCase):
         )
 
         with patch(
-            "financetracker.services.display_conversion.get_rate",
-            return_value=RateResult(rate=Decimal("25.00")),
+            "financetracker.services.display_conversion.get_rates",
+            side_effect=_constant_get_rates(Decimal("25.00")),
         ):
             response = self.client.get(
                 reverse("statistics"),
@@ -158,8 +165,8 @@ class StatisticsViewsTests(TestCase):
         )
 
         with patch(
-            "financetracker.services.display_conversion.get_rate",
-            side_effect=CurrencyConversionError("network down"),
+            "financetracker.services.display_conversion.get_rates",
+            return_value={},
         ):
             response = self.client.get(reverse("statistics"))
 
@@ -185,8 +192,8 @@ class StatisticsViewsTests(TestCase):
         )
 
         with patch(
-            "financetracker.services.display_conversion.get_rate",
-            return_value=RateResult(rate=Decimal("25.00"), stale_date=yesterday),
+            "financetracker.services.display_conversion.get_rates",
+            side_effect=_constant_get_rates(Decimal("25.00"), stale_date=yesterday),
         ):
             response = self.client.get(reverse("statistics"))
 
@@ -218,8 +225,8 @@ class StatisticsViewsTests(TestCase):
         )
 
         with patch(
-            "financetracker.services.display_conversion.get_rate",
-            return_value=RateResult(rate=Decimal("25.00")),
+            "financetracker.services.display_conversion.get_rates",
+            side_effect=_constant_get_rates(Decimal("25.00")),
         ):
             response = self.client.get(
                 reverse("statistics"),

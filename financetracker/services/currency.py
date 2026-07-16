@@ -6,6 +6,7 @@ from typing import Iterable
 
 import requests
 from django.db import OperationalError, transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from financetracker.models import EUR_BASE_CURRENCY, ExchangeRate, SyncMetadata
@@ -84,23 +85,49 @@ def _fetch_supported_currencies_from_api() -> dict[str, str]:
     return {currency["iso_code"].upper(): currency["name"] for currency in data}
 
 
+def _expected_quote_count() -> int | None:
+    """Number of EUR-quote rows a complete daily snapshot should contain."""
+    currencies = SyncMetadata.get_singleton().supported_currencies
+    if not currencies:
+        return None
+    return sum(
+        1 for code in currencies if str(code).upper() != EUR_BASE_CURRENCY
+    )
+
+
 def _upsert_exchange_rates(rate_date: date, rates: dict[str, Decimal]) -> None:
     fetched_at = timezone.now()
-    for quote_currency, rate in rates.items():
-        ExchangeRate.objects.update_or_create(
+    rows = [
+        ExchangeRate(
             base_currency=EUR_BASE_CURRENCY,
             quote_currency=quote_currency,
             rate_date=rate_date,
-            defaults={"rate": rate, "fetched_at": fetched_at},
+            rate=rate,
+            fetched_at=fetched_at,
+        )
+        for quote_currency, rate in rates.items()
+    ]
+    with transaction.atomic():
+        ExchangeRate.objects.bulk_create(
+            rows,
+            update_conflicts=True,
+            unique_fields=["base_currency", "quote_currency", "rate_date"],
+            update_fields=["rate", "fetched_at"],
         )
 
 
 def _has_date_snapshot(rate_date: date) -> bool:
-    return ExchangeRate.objects.filter(rate_date=rate_date).exists()
+    actual = ExchangeRate.objects.filter(rate_date=rate_date).count()
+    if actual == 0:
+        return False
+    expected = _expected_quote_count()
+    if expected is None:
+        return True
+    return actual >= expected
 
 
-def _ensure_date_snapshot(rate_date: date) -> None:
-    if _has_date_snapshot(rate_date):
+def _ensure_date_snapshot(rate_date: date, *, force: bool = False) -> None:
+    if not force and _has_date_snapshot(rate_date):
         return
 
     for days_back in range(MAX_RATE_WALKBACK_DAYS + 1):
@@ -119,9 +146,29 @@ def _ensure_date_snapshot(rate_date: date) -> None:
 
 
 def ensure_rate_snapshots(dates: Iterable[date]) -> None:
-    for rate_date in dates:
-        if rate_date < date.today():
-            _ensure_date_snapshot(rate_date)
+    today = date.today()
+    pending = sorted({rate_date for rate_date in dates if rate_date < today})
+    if not pending:
+        return
+
+    expected = _expected_quote_count()
+    counts = {
+        row["rate_date"]: row["c"]
+        for row in (
+            ExchangeRate.objects.filter(rate_date__in=pending)
+            .values("rate_date")
+            .annotate(c=Count("id"))
+        )
+    }
+    for rate_date in pending:
+        actual = counts.get(rate_date, 0)
+        complete = actual > 0 and (expected is None or actual >= expected)
+        if complete:
+            continue
+        try:
+            _ensure_date_snapshot(rate_date, force=actual > 0)
+        except CurrencyConversionError:
+            continue
 
 
 def _is_sync_stale(metadata: SyncMetadata | None = None) -> bool:
@@ -266,7 +313,12 @@ def _get_latest_rate(from_code: str, to_code: str) -> RateResult:
 
 def _get_historical_rate(from_code: str, to_code: str, on_date: date) -> RateResult:
     _ensure_date_snapshot(on_date)
-    rate = _derive_rate_from_eur_snapshot(from_code, to_code, on_date)
+    try:
+        rate = _derive_rate_from_eur_snapshot(from_code, to_code, on_date)
+    except CurrencyConversionError:
+        # Partial snapshot (e.g. interrupted upsert) with no size baseline.
+        _ensure_date_snapshot(on_date, force=True)
+        rate = _derive_rate_from_eur_snapshot(from_code, to_code, on_date)
     return RateResult(rate=rate, stale_date=None)
 
 
@@ -286,6 +338,134 @@ def get_rate(
         return _get_historical_rate(from_code, to_code, on_date)
 
     return _get_latest_rate(from_code, to_code)
+
+
+def _derive_rate_from_eur_map(
+    eur_rates: dict[tuple[str, date], Decimal],
+    from_code: str,
+    to_code: str,
+    rate_date: date,
+) -> Decimal:
+    if from_code == EUR_BASE_CURRENCY:
+        eur_to_from = Decimal("1")
+    else:
+        try:
+            eur_to_from = eur_rates[(from_code, rate_date)]
+        except KeyError as exc:
+            raise CurrencyConversionError(
+                f"No stored rate for {EUR_BASE_CURRENCY}/{from_code} "
+                f"on {rate_date.isoformat()}"
+            ) from exc
+
+    if to_code == EUR_BASE_CURRENCY:
+        eur_to_to = Decimal("1")
+    else:
+        try:
+            eur_to_to = eur_rates[(to_code, rate_date)]
+        except KeyError as exc:
+            raise CurrencyConversionError(
+                f"No stored rate for {EUR_BASE_CURRENCY}/{to_code} "
+                f"on {rate_date.isoformat()}"
+            ) from exc
+
+    return eur_to_to / eur_to_from
+
+
+def get_rates(
+    keys: Iterable[tuple[str, str, date]],
+) -> dict[tuple[str, str, date], RateResult]:
+    """Resolve many (from, to, on_date) keys with bulk historical DB reads."""
+    today = date.today()
+    normalized: list[tuple[str, str, date]] = []
+    for from_currency, to_currency, on_date in keys:
+        normalized.append(
+            (
+                _normalize_currency(from_currency),
+                _normalize_currency(to_currency),
+                on_date,
+            )
+        )
+
+    historical = [
+        (f, t, d) for f, t, d in normalized if f != t and d < today
+    ]
+    latest = [(f, t, d) for f, t, d in normalized if f != t and d >= today]
+    identity = [(f, t, d) for f, t, d in normalized if f == t]
+
+    results: dict[tuple[str, str, date], RateResult] = {
+        (f, t, d): RateResult(rate=Decimal("1"), stale_date=None)
+        for f, t, d in identity
+    }
+
+    if historical:
+        try:
+            ensure_rate_snapshots({d for _, _, d in historical})
+        except CurrencyConversionError:
+            pass
+        dates = {d for _, _, d in historical}
+        quotes = {
+            code
+            for f, t, _ in historical
+            for code in (f, t)
+            if code != EUR_BASE_CURRENCY
+        }
+        eur_rates = {
+            (quote, rate_date): rate
+            for quote, rate_date, rate in ExchangeRate.objects.filter(
+                base_currency=EUR_BASE_CURRENCY,
+                rate_date__in=dates,
+                quote_currency__in=quotes,
+            ).values_list("quote_currency", "rate_date", "rate")
+        }
+        missing_dates: set[date] = set()
+        for from_code, to_code, on_date in historical:
+            try:
+                rate = _derive_rate_from_eur_map(
+                    eur_rates, from_code, to_code, on_date
+                )
+            except CurrencyConversionError:
+                missing_dates.add(on_date)
+                continue
+            results[(from_code, to_code, on_date)] = RateResult(
+                rate=rate, stale_date=None
+            )
+
+        if missing_dates:
+            for on_date in missing_dates:
+                try:
+                    _ensure_date_snapshot(on_date, force=True)
+                except CurrencyConversionError:
+                    continue
+            eur_rates = {
+                (quote, rate_date): rate
+                for quote, rate_date, rate in ExchangeRate.objects.filter(
+                    base_currency=EUR_BASE_CURRENCY,
+                    rate_date__in=dates,
+                    quote_currency__in=quotes,
+                ).values_list("quote_currency", "rate_date", "rate")
+            }
+            for from_code, to_code, on_date in historical:
+                if (from_code, to_code, on_date) in results:
+                    continue
+                try:
+                    rate = _derive_rate_from_eur_map(
+                        eur_rates, from_code, to_code, on_date
+                    )
+                except CurrencyConversionError:
+                    continue
+                results[(from_code, to_code, on_date)] = RateResult(
+                    rate=rate, stale_date=None
+                )
+
+    for from_code, to_code, on_date in latest:
+        try:
+            results[(from_code, to_code, on_date)] = _get_latest_rate(
+                from_code, to_code
+            )
+        except CurrencyConversionError:
+            continue
+
+    return results
 
 
 def convert(
