@@ -1,18 +1,18 @@
 from datetime import date, timedelta
 from decimal import Decimal
-import requests
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from django.test import TestCase
 from django.utils import timezone
 
 from financetracker.models import ExchangeRate
-from financetracker.services.currency import RateResult
+from financetracker.services.currency import CurrencyConversionError, RateResult
 from financetracker.services.display_conversion import (
     RowConversionOutcome,
     convert_for_display,
 )
 from financetracker.tests.factories import create_transaction, create_user
+from financetracker.tests.rate_source_support import FakeRateSource, override_rate_source
 
 
 def _constant_get_rates(rate: Decimal, stale_date=None):
@@ -245,10 +245,11 @@ class DisplayConversionTests(TestCase):
         self.assertIsNone(result.rates_stale_date)
         self.assertIsNone(result.total_income)
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_historical_snapshot_fetch_failure_does_not_crash_display(self, mock_get):
+    def test_historical_snapshot_fetch_failure_does_not_crash_display(self):
         past = date.today() - timedelta(days=7)
-        mock_get.side_effect = requests.RequestException("network down")
+        fake = FakeRateSource(
+            bulk_error=CurrencyConversionError("Failed to fetch bulk exchange rates"),
+        )
         transaction = create_transaction(
             self.user,
             amount=Decimal("10.00"),
@@ -256,7 +257,8 @@ class DisplayConversionTests(TestCase):
             transaction_date=past,
         )
 
-        result = convert_for_display([transaction], "CZK")
+        with override_rate_source(fake):
+            result = convert_for_display([transaction], "CZK")
 
         self.assertFalse(result.conversion_degraded)
         row = result.rows[0]
@@ -307,32 +309,15 @@ class DisplayConversionTests(TestCase):
         self.assertEqual(result.total_expense, Decimal("0"))
         self.assertEqual(result.balance, Decimal("250.00"))
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_historical_transactions_group_snapshots_by_date(self, mock_get):
+    def test_historical_transactions_group_snapshots_by_date(self):
         past = date.today() - timedelta(days=3)
         other_past = date.today() - timedelta(days=5)
-
-        def bulk_response(for_date: date):
-            response = MagicMock()
-            response.status_code = 200
-            response.raise_for_status.return_value = None
-            response.json.return_value = [
-                {
-                    "date": for_date.isoformat(),
-                    "base": "EUR",
-                    "quote": "USD",
-                    "rate": 1.1,
-                },
-                {
-                    "date": for_date.isoformat(),
-                    "base": "EUR",
-                    "quote": "CZK",
-                    "rate": 25.0,
-                },
-            ]
-            return response
-
-        mock_get.side_effect = [bulk_response(past), bulk_response(other_past)]
+        fake = FakeRateSource(
+            rates_by_date={
+                past: {"USD": Decimal("1.1"), "CZK": Decimal("25.0")},
+                other_past: {"USD": Decimal("1.1"), "CZK": Decimal("25.0")},
+            },
+        )
 
         transactions = [
             create_transaction(
@@ -358,13 +343,14 @@ class DisplayConversionTests(TestCase):
             ),
         ]
 
-        result = convert_for_display(
-            transactions,
-            "CZK",
-            totals_transactions=transactions,
-        )
+        with override_rate_source(fake):
+            result = convert_for_display(
+                transactions,
+                "CZK",
+                totals_transactions=transactions,
+            )
 
-        self.assertEqual(mock_get.call_count, 2)
+        self.assertEqual(set(fake.fetch_bulk_calls), {past, other_past})
         self.assertFalse(result.conversion_degraded)
         self.assertEqual(result.rows[0].primary_amount, Decimal("250.00"))
         self.assertEqual(
@@ -383,27 +369,11 @@ class DisplayConversionTests(TestCase):
             + Decimal("5.00") * (Decimal("25.0") / Decimal("1.1")),
         )
 
-    @patch("financetracker.services.currency.requests.get")
-    def test_repeat_display_conversion_reuses_historical_db_without_http(self, mock_get):
+    def test_repeat_display_conversion_reuses_historical_db_without_fetch(self):
         past = date.today() - timedelta(days=7)
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status.return_value = None
-        mock_response.json.return_value = [
-            {
-                "date": past.isoformat(),
-                "base": "EUR",
-                "quote": "EUR",
-                "rate": 1.0,
-            },
-            {
-                "date": past.isoformat(),
-                "base": "EUR",
-                "quote": "CZK",
-                "rate": 25.0,
-            },
-        ]
-        mock_get.return_value = mock_response
+        fake = FakeRateSource(
+            rates_by_date={past: {"EUR": Decimal("1.0"), "CZK": Decimal("25.0")}},
+        )
 
         transaction = create_transaction(
             self.user,
@@ -412,12 +382,12 @@ class DisplayConversionTests(TestCase):
             transaction_date=past,
         )
 
-        convert_for_display([transaction], "CZK")
-        mock_get.reset_mock()
+        with override_rate_source(fake):
+            convert_for_display([transaction], "CZK")
+            fake.fetch_bulk_calls.clear()
+            result = convert_for_display([transaction], "CZK")
 
-        result = convert_for_display([transaction], "CZK")
-
-        mock_get.assert_not_called()
+        self.assertEqual(fake.fetch_bulk_calls, [])
         self.assertEqual(result.rows[0].primary_amount, Decimal("250.00"))
         self.assertFalse(result.conversion_degraded)
 
@@ -438,10 +408,11 @@ class DisplayConversionTests(TestCase):
             transaction_date=past,
         )
 
-        with patch("financetracker.services.currency.requests.get") as mock_get:
+        fake = FakeRateSource()
+        with override_rate_source(fake):
             result = convert_for_display([transaction], "CZK")
 
-        mock_get.assert_not_called()
+        self.assertEqual(fake.fetch_bulk_calls, [])
         self.assertEqual(result.rows[0].primary_amount, Decimal("250.00"))
 
     def test_many_preloaded_dates_use_bounded_queries(self):
@@ -477,11 +448,12 @@ class DisplayConversionTests(TestCase):
             for rate_date in dates
         ]
 
-        with patch("financetracker.services.currency.requests.get") as mock_get:
+        fake = FakeRateSource()
+        with override_rate_source(fake):
             with self.assertNumQueries(3):
                 result = convert_for_display(transactions, "EUR")
 
-        mock_get.assert_not_called()
+        self.assertEqual(fake.fetch_bulk_calls, [])
         self.assertFalse(result.conversion_degraded)
         self.assertEqual(len(result.rows), day_count)
         self.assertEqual(result.rows[0].primary_currency, "EUR")
