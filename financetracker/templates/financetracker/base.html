@@ -9,7 +9,15 @@
   <script>
     (function () {
       var root = document.documentElement;
-      var pref = root.getAttribute("data-theme-preference") || "system";
+      var pref = root.getAttribute("data-theme-preference");
+      if (!pref) {
+        var match = document.cookie.match(/(?:^|; )ft_theme=([^;]*)/);
+        pref = match ? decodeURIComponent(match[1]) : "system";
+      }
+      if (pref !== "warm" && pref !== "night" && pref !== "system") {
+        pref = "system";
+      }
+      root.setAttribute("data-theme-preference", pref);
       function resolve(preference) {
         if (preference === "warm" || preference === "night") return preference;
         return window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "warm";
