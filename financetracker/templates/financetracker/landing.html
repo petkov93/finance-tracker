@@ -21,17 +21,16 @@
         <a href="{% url 'login' %}" class="btn btn-ghost">Log in</a>
       </div>
     </div>
-    <div
-      class="landing-hero-page"
-      style="--landing-shot-src: url('{% static 'financetracker/img/landing/dashboard.png' %}')"
-      aria-hidden="true"
-    >
-      <div class="landing-page-ruled">
-        <span class="landing-page-label">Ledger</span>
-        <span class="landing-page-line"></span>
-        <span class="landing-page-line landing-page-line--short"></span>
-        <span class="landing-page-line"></span>
-        <span class="landing-page-line landing-page-line--mid"></span>
+    <div class="landing-hero-visual" aria-hidden="true">
+      <div class="landing-hero-page">
+        <img
+          src="{% static 'financetracker/img/landing/dashboard.jpg' %}"
+          alt=""
+          width="1220"
+          height="1672"
+          decoding="async"
+          fetchpriority="high"
+        />
       </div>
     </div>
   </section>
@@ -45,15 +44,16 @@
           at a glance, and stay close to the numbers that matter.
         </p>
       </div>
-      <figure
-        class="landing-shot"
-        data-landing-shot="dashboard"
-        style="--landing-shot-src: url('{% static 'financetracker/img/landing/dashboard.png' %}')"
-      >
+      <figure class="landing-shot" data-landing-shot="dashboard">
         <div class="landing-shot-frame">
-          <div class="landing-shot-placeholder" aria-hidden="true">
-            <span class="landing-shot-caption">Dashboard</span>
-          </div>
+          <img
+            src="{% static 'financetracker/img/landing/dashboard-sm.jpg' %}"
+            alt="Finance Tracker dashboard with balance, income, expenses, and transactions"
+            width="1125"
+            height="1182"
+            loading="lazy"
+            decoding="async"
+          />
         </div>
         <figcaption class="visually-hidden">Dashboard screenshot</figcaption>
       </figure>
@@ -67,15 +67,16 @@
           habits show up without a spreadsheet hunt.
         </p>
       </div>
-      <figure
-        class="landing-shot"
-        data-landing-shot="statistics"
-        style="--landing-shot-src: url('{% static 'financetracker/img/landing/statistics.png' %}')"
-      >
+      <figure class="landing-shot" data-landing-shot="statistics">
         <div class="landing-shot-frame">
-          <div class="landing-shot-placeholder" aria-hidden="true">
-            <span class="landing-shot-caption">Statistics</span>
-          </div>
+          <img
+            src="{% static 'financetracker/img/landing/statistics-sm.jpg' %}"
+            alt="Finance Tracker statistics with monthly overview and category charts"
+            width="1068"
+            height="882"
+            loading="lazy"
+            decoding="async"
+          />
         </div>
         <figcaption class="visually-hidden">Statistics screenshot</figcaption>
       </figure>
@@ -89,15 +90,16 @@
           useful when life is not all in one currency.
         </p>
       </div>
-      <figure
-        class="landing-shot"
-        data-landing-shot="converter"
-        style="--landing-shot-src: url('{% static 'financetracker/img/landing/converter.png' %}')"
-      >
+      <figure class="landing-shot" data-landing-shot="converter">
         <div class="landing-shot-frame">
-          <div class="landing-shot-placeholder" aria-hidden="true">
-            <span class="landing-shot-caption">Converter</span>
-          </div>
+          <img
+            src="{% static 'financetracker/img/landing/converter-sm.jpg' %}"
+            alt="Finance Tracker currency converter with from, to, and converted amount"
+            width="1093"
+            height="891"
+            loading="lazy"
+            decoding="async"
+          />
         </div>
         <figcaption class="visually-hidden">Currency converter screenshot</figcaption>
       </figure>
