@@ -1,17 +1,45 @@
 # Finance Tracker
 
-A personal finance web app for tracking income, expenses, and investments. Transactions are stored in their **native currency**; the dashboard and statistics show amounts in each user's **default currency** via on-the-fly **display conversion**. Built with Django, PostgreSQL (Supabase), and a Warm Ledger / Night Ledger UI (plus System preference) served via WhiteNoise.
+A personal finance web app for tracking income, expenses, and investments. Transactions are stored in their **Transaction currency**; the dashboard and statistics show amounts in each user's **Default currency** via on-the-fly **Display conversion**. Built with Django, PostgreSQL (Supabase), and a Warm Ledger / Night Ledger UI (plus System preference) served via WhiteNoise.
 
 **Repository:** [github.com/petkov93/finance-tracker](https://github.com/petkov93/finance-tracker)
+
+![Finance Tracker public landing page](financetracker/img/sample/landing-page.png)
+
+---
+
+## Screenshots
+
+**Dashboard** · **Statistics** · **Converter**
+
+![Dashboard](financetracker/img/landing/dashboard-sm.jpg)
+
+![Statistics](financetracker/img/landing/statistics-sm.jpg)
+
+![Currency converter](financetracker/img/landing/converter-sm.jpg)
+
+**Log in** · **Sign up**
+
+![Log in](financetracker/img/sample/login.png)
+
+![Sign up](financetracker/img/sample/register.png)
+
+Full dashboard capture (also used on the landing hero):
+
+![Dashboard full page](financetracker/img/landing/dashboard.jpg)
 
 ---
 
 ## Features
 
+### Public landing
+- Marketing home at `/` for guests (hero, feature frames, signup CTA)
+- Logged-in visitors hitting `/` go straight to the dashboard at `/dashboard/`
+
 ### Dashboard
 - Overview of **balance**, total income, and total expenses (all time), summed in your default currency
 - Recent transactions with edit/delete
-- When a transaction's native currency differs from your default, the converted amount is shown prominently with the original as a footnote
+- When a transaction's Transaction currency differs from your Default currency, the converted amount is shown prominently with the original as a footnote
 
 ### Transactions
 - Add **income** or **expense** entries in any [Frankfurter-supported](https://frankfurter.dev) currency
@@ -70,11 +98,15 @@ A personal finance web app for tracking income, expenses, and investments. Trans
 finance-tracker/
 ├── config/                 # Django settings, URLs, WSGI
 ├── financetracker/         # Main app
+│   ├── img/
+│   │   ├── landing/        # Landing / README product screenshots
+│   │   └── sample/         # Landing page, login, register captures
 │   ├── management/commands/
 │   │   └── seed_categories.py   # Default categories (empty DB only)
 │   ├── migrations/
 │   ├── static/financetracker/
 │   │   ├── css/style.css         # Warm / Night design tokens
+│   │   ├── img/landing/          # Served landing screenshots
 │   │   └── js/theme.js           # Live System preference + themechange events
 │   ├── templates/financetracker/
 │   ├── models.py           # Category, Transaction, InvestmentEntry, UserProfile, ExchangeRate

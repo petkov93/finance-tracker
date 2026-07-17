@@ -26,9 +26,10 @@ class LandingViewsTests(TestCase):
         self.assertContains(response, 'data-landing-shot="statistics"')
         self.assertContains(response, 'data-landing-shot="converter"')
         self.assertContains(response, "Open your ledger")
-        self.assertContains(response, "financetracker/img/landing/dashboard.png")
-        self.assertContains(response, "financetracker/img/landing/statistics.png")
-        self.assertContains(response, "financetracker/img/landing/converter.png")
+        self.assertContains(response, "financetracker/img/landing/dashboard.jpg")
+        self.assertContains(response, "financetracker/img/landing/dashboard-sm.jpg")
+        self.assertContains(response, "financetracker/img/landing/statistics-sm.jpg")
+        self.assertContains(response, "financetracker/img/landing/converter-sm.jpg")
 
     def test_authenticated_root_redirects_to_dashboard(self):
         self.client.login(username=self.user.username, password=DEFAULT_PASSWORD)
