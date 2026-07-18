@@ -5,7 +5,8 @@ from unittest.mock import patch
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from financetracker.models import Transaction, UserProfile, ensure_user_profile
+from financetracker.models import IOU, Transaction, UserProfile, ensure_user_profile
+from financetracker.services.iou import create_receivable, record_repayment
 from financetracker.services.currency import RateResult
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
@@ -287,3 +288,76 @@ class TransactionViewsTests(TestCase):
         response = self.client.post(reverse("delete_transaction", args=[other_transaction.pk]))
         self.assertEqual(response.status_code, 404)
         self.assertTrue(Transaction.objects.filter(pk=other_transaction.pk).exists())
+
+
+class IouLinkedTransactionViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = create_user()
+        self.category = create_category()
+        self.client.login(username=self.user.username, password=DEFAULT_PASSWORD)
+        self.supported_patcher = patch(
+            "financetracker.views.get_supported_currencies",
+            return_value=SUPPORTED.copy(),
+        )
+        self.supported_patcher.start()
+        self.addCleanup(self.supported_patcher.stop)
+        ensure_user_profile(self.user)
+
+    def test_delete_opening_transaction_blocked_while_iou_active(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        opening = iou.opening_transaction
+
+        response = self.client.post(reverse("delete_transaction", args=[opening.pk]))
+
+        self.assertRedirects(response, reverse("dashboard"))
+        self.assertTrue(Transaction.objects.filter(pk=opening.pk).exists())
+
+    def test_edit_opening_transaction_amount_blocked_while_iou_active(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        opening = iou.opening_transaction
+
+        response = self.client.post(
+            reverse("edit_transaction", args=[opening.pk]),
+            {
+                "type": opening.type,
+                "amount": "400.00",
+                "currency": "CZK",
+                "category": opening.category_id,
+                "description": opening.description,
+                "date": opening.date.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        opening.refresh_from_db()
+        self.assertEqual(opening.amount, Decimal("500.00"))
+
+    def test_delete_repayment_transaction_restores_iou_remaining(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        record_repayment(iou, amount=Decimal("200.00"))
+        iou.refresh_from_db()
+        repayment_tx = iou.repayments.get().transaction
+
+        response = self.client.post(reverse("delete_transaction", args=[repayment_tx.pk]))
+
+        self.assertRedirects(response, reverse("dashboard"))
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("500.00"))
+        self.assertEqual(iou.status, IOU.ACTIVE)
+        self.assertFalse(Transaction.objects.filter(pk=repayment_tx.pk).exists())
