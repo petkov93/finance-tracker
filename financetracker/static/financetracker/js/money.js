@@ -1,7 +1,15 @@
 (function () {
-  const locale =
-    (typeof navigator !== "undefined" && (navigator.language || (navigator.languages && navigator.languages[0]))) ||
-    "en";
+  function resolveLocale() {
+    if (window.FINANCE_TRACKER_DISPLAY_LOCALE) {
+      return window.FINANCE_TRACKER_DISPLAY_LOCALE;
+    }
+    if (typeof navigator !== "undefined") {
+      return navigator.language || (navigator.languages && navigator.languages[0]) || "en";
+    }
+    return "en";
+  }
+
+  const locale = resolveLocale();
 
   function formatAmount(amount, decimalPlaces) {
     const digits = decimalPlaces == null ? 2 : decimalPlaces;

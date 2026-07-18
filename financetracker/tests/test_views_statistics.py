@@ -237,10 +237,14 @@ class StatisticsViewsTests(TestCase):
         self.assertEqual(response.context["total_count"], 1)
 
     def test_statistics_charts_use_shared_money_formatter(self):
-        response = self.client.get(reverse("statistics"))
+        response = self.client.get(
+            reverse("statistics"),
+            HTTP_ACCEPT_LANGUAGE="cs-CZ,cs;q=0.9",
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "financetracker/js/money.js")
+        self.assertContains(response, 'FINANCE_TRACKER_DISPLAY_LOCALE = "cs"')
         self.assertContains(response, "FinanceTrackerMoney")
         self.assertContains(response, "money.formatMoney")
         self.assertNotContains(response, 'toLocaleString("cs-CZ")')
