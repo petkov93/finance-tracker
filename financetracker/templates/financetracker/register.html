@@ -33,7 +33,7 @@
           {% for field in form %}
             <div class="form-group">
               <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-              {% if field.field.widget.input_type %}
+              {% if field.field.widget.input_type and field.field.widget.input_type != "select" %}
                 <input type="{{ field.field.widget.input_type }}"
                        name="{{ field.html_name }}"
                        id="{{ field.id_for_label }}"

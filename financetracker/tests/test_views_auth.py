@@ -99,6 +99,18 @@ class AuthViewsTests(TestCase):
         self.assertContains(response, 'id="id_default_currency"')
         self.assertContains(response, "register.js")
 
+    def test_register_default_currency_is_select_with_common_currencies(self):
+        response = self.client.get(reverse("register"))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn('<select name="default_currency"', content)
+        self.assertNotIn('<input type="select"', content)
+        self.assertIn('<optgroup label="Common currencies">', content)
+        self.assertIn('<optgroup label="All currencies">', content)
+        self.assertContains(response, '<option value="CZK"')
+        self.assertContains(response, '<option value="EUR"')
+        self.assertContains(response, '<option value="USD"')
+
     def test_authenticated_user_redirected_from_login(self):
         self.client.login(username=self.user.username, password=DEFAULT_PASSWORD)
         response = self.client.get(reverse("login"))
