@@ -30,6 +30,7 @@ from .forms import (
     LendForm,
     BorrowForm,
     RepayForm,
+    IOUMetadataForm,
     ProfileForm,
     RegistrationForm,
     TransactionForm,
@@ -48,10 +49,13 @@ from .services.currency import (
 )
 from .services.display_conversion import convert_for_display
 from .services.iou import (
+    close_unpaid,
     compute_open_iou_adjustment,
     create_payable,
     create_receivable,
     record_repayment,
+    reopen_unpaid,
+    update_iou_metadata,
 )
 from .services.statistics_aggregation import aggregate_for_statistics
 
@@ -459,11 +463,17 @@ def ious(request):
         direction=IOU.PAYABLE,
         status=IOU.ACTIVE,
     )
+    closed_ious = IOU.objects.filter(
+        user=request.user,
+        status__in=[IOU.PAID, IOU.UNPAID],
+    )
     return render(request, "financetracker/ious.html", {
         "receivables": receivables,
         "receivable_count": receivables.count(),
         "payables": payables,
         "payable_count": payables.count(),
+        "closed_ious": closed_ious,
+        "closed_count": closed_ious.count(),
     })
 
 
@@ -579,37 +589,94 @@ def iou_detail(request, pk):
         "-created_at",
     )
 
+    repay_form = None
+    metadata_form = None
+
     if request.method == "POST":
-        if iou.status != IOU.ACTIVE:
-            messages.error(request, "This IOU is closed and cannot accept repayments.")
+        action = request.POST.get("action", "repay")
+
+        if action == "close_unpaid":
+            if iou.status != IOU.ACTIVE:
+                messages.error(request, "Only active IOUs can be closed as unpaid.")
+            else:
+                close_unpaid(iou)
+                messages.success(request, "IOU closed as unpaid.")
             return redirect("iou_detail", pk=pk)
 
-        form = RepayForm(
-            request.POST,
-            max_amount=iou.remaining_amount,
-            currency=iou.currency,
-        )
-        if form.is_valid():
-            record_repayment(
-                iou,
-                amount=form.cleaned_data["amount"],
-                transaction_date=form.cleaned_data["date"],
-            )
-            messages.success(request, "Repayment recorded successfully.")
+        if action == "reopen":
+            if iou.status != IOU.UNPAID:
+                messages.error(request, "Only unpaid IOUs can be reopened.")
+            else:
+                reopen_unpaid(iou)
+                messages.success(request, "IOU reopened.")
             return redirect("iou_detail", pk=pk)
-    elif iou.status == IOU.ACTIVE:
-        form = RepayForm(
-            initial={"date": timezone.now().date()},
-            max_amount=iou.remaining_amount,
-            currency=iou.currency,
-        )
+
+        if action == "edit_metadata":
+            if iou.status != IOU.ACTIVE:
+                messages.error(request, "Only active IOUs can be edited.")
+                return redirect("iou_detail", pk=pk)
+
+            metadata_form = IOUMetadataForm(request.POST)
+            if metadata_form.is_valid():
+                update_iou_metadata(
+                    iou,
+                    counterparty_name=metadata_form.cleaned_data["counterparty_name"],
+                    due_date=metadata_form.cleaned_data.get("due_date"),
+                )
+                messages.success(request, "IOU details updated.")
+                return redirect("iou_detail", pk=pk)
+        elif action == "repay":
+            if iou.status != IOU.ACTIVE:
+                messages.error(request, "This IOU is closed and cannot accept repayments.")
+                return redirect("iou_detail", pk=pk)
+
+            repay_form = RepayForm(
+                request.POST,
+                max_amount=iou.remaining_amount,
+                currency=iou.currency,
+            )
+            if repay_form.is_valid():
+                record_repayment(
+                    iou,
+                    amount=repay_form.cleaned_data["amount"],
+                    transaction_date=repay_form.cleaned_data["date"],
+                )
+                messages.success(request, "Repayment recorded successfully.")
+                return redirect("iou_detail", pk=pk)
     else:
-        form = None
+        if iou.status == IOU.ACTIVE:
+            repay_form = RepayForm(
+                initial={"date": timezone.now().date()},
+                max_amount=iou.remaining_amount,
+                currency=iou.currency,
+            )
+            metadata_form = IOUMetadataForm(
+                initial={
+                    "counterparty_name": iou.counterparty_name,
+                    "due_date": iou.due_date,
+                },
+            )
+
+    if iou.status == IOU.ACTIVE:
+        if repay_form is None:
+            repay_form = RepayForm(
+                initial={"date": timezone.now().date()},
+                max_amount=iou.remaining_amount,
+                currency=iou.currency,
+            )
+        if metadata_form is None:
+            metadata_form = IOUMetadataForm(
+                initial={
+                    "counterparty_name": iou.counterparty_name,
+                    "due_date": iou.due_date,
+                },
+            )
 
     return render(request, "financetracker/iou_detail.html", {
         "iou": iou,
         "repayments": repayments,
-        "repay_form": form,
+        "repay_form": repay_form,
+        "metadata_form": metadata_form,
     })
 
 

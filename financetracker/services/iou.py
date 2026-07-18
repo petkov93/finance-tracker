@@ -164,6 +164,36 @@ def record_repayment(
         )
 
 
+def close_unpaid(iou: IOU) -> IOU:
+    if iou.status != IOU.ACTIVE:
+        raise ValueError("Can only close active IOUs as unpaid.")
+    iou.status = IOU.UNPAID
+    iou.save(update_fields=["status", "updated_at"])
+    return iou
+
+
+def reopen_unpaid(iou: IOU) -> IOU:
+    if iou.status != IOU.UNPAID:
+        raise ValueError("Can only reopen unpaid IOUs.")
+    iou.status = IOU.ACTIVE
+    iou.save(update_fields=["status", "updated_at"])
+    return iou
+
+
+def update_iou_metadata(
+    iou: IOU,
+    *,
+    counterparty_name: str,
+    due_date: date | None = None,
+) -> IOU:
+    if iou.status != IOU.ACTIVE:
+        raise ValueError("Can only edit metadata on active IOUs.")
+    iou.counterparty_name = counterparty_name
+    iou.due_date = due_date
+    iou.save(update_fields=["counterparty_name", "due_date", "updated_at"])
+    return iou
+
+
 def compute_open_iou_adjustment(
     user: User,
     default_currency: str,
