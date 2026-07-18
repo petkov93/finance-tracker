@@ -1,4 +1,5 @@
 {% extends "financetracker/base.html" %}
+{% load money %}
 {% block title %}Statistics — Finance Tracker{% endblock %}
 
 {% block content %}
@@ -28,18 +29,18 @@
 <div class="hero-stats hero-stats--compact animate-in animate-in-delay-1">
   <div class="hero-balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
     <span class="summary-label">Net balance</span>
-    <span class="hero-amount">{{ balance|floatformat:2 }} <small>{{ default_currency }}</small></span>
+    <span class="hero-amount">{% money_amount balance %} <small>{{ default_currency }}</small></span>
     <span class="summary-sub">{{ total_count }} transactions</span>
   </div>
   <div class="hero-secondary">
     <div class="stat-pill income">
       <span class="summary-label">Income</span>
-      <span class="stat-pill-value">{{ total_income|floatformat:2 }}</span>
+      <span class="stat-pill-value">{% money_amount total_income %}</span>
       <span class="summary-sub">{{ income_count }} transactions</span>
     </div>
     <div class="stat-pill expense">
       <span class="summary-label">Expenses</span>
-      <span class="stat-pill-value">{{ total_expense|floatformat:2 }}</span>
+      <span class="stat-pill-value">{% money_amount total_expense %}</span>
       <span class="summary-sub">{{ expense_count }} transactions</span>
     </div>
   </div>
@@ -97,6 +98,7 @@
     const FONT_UI = "'Source Sans 3', system-ui, sans-serif";
     const FONT_MONO = "'IBM Plex Mono', monospace";
     const defaultCurrency = "{{ default_currency }}";
+    const money = window.FinanceTrackerMoney;
     const monthLabels = {{ month_labels|safe }};
     const monthlyIncome = {{ monthly_income|safe }};
     const monthlyExpense = {{ monthly_expense|safe }};
@@ -188,7 +190,7 @@
             ticks: {
               color: colors.tick,
               font: { family: FONT_MONO, size: 11 },
-              callback: (v) => v.toLocaleString("cs-CZ") + " " + defaultCurrency,
+              callback: (v) => money.formatMoney(v, defaultCurrency, 0),
             },
             grid: { color: colors.grid },
             beginAtZero: true,
@@ -215,7 +217,7 @@
             },
             tooltip: {
               callbacks: {
-                label: (c) => " " + c.parsed.toLocaleString("cs-CZ") + " " + defaultCurrency,
+                label: (c) => " " + money.formatMoney(c.parsed, defaultCurrency),
               },
             },
           },
@@ -241,7 +243,7 @@
             },
             tooltip: {
               callbacks: {
-                label: (c) => " " + c.parsed.toLocaleString("cs-CZ") + " " + defaultCurrency,
+                label: (c) => " " + money.formatMoney(c.parsed, defaultCurrency),
               },
             },
           },

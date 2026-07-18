@@ -54,7 +54,10 @@
   }
 
   function setResult(amount, currency) {
-    resultValue.textContent = `${Number(amount).toFixed(2)} ${currency}`;
+    const money = window.FinanceTrackerMoney;
+    resultValue.textContent = money
+      ? money.formatMoney(amount, currency)
+      : `${Number(amount).toFixed(2)} ${currency}`;
     resultValue.classList.remove("converter-result-value--empty");
   }
 
@@ -68,7 +71,9 @@
     hideError(rateError);
     if (!rateLine) return;
     rateLine.hidden = false;
-    rateLine.textContent = `1 ${from} = ${rate} ${to}`;
+    const money = window.FinanceTrackerMoney;
+    const formattedRate = money ? money.formatAmount(rate, 4) : rate;
+    rateLine.textContent = `1 ${from} = ${formattedRate} ${to}`;
   }
 
   function setRateUnavailable() {

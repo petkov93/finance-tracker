@@ -52,6 +52,16 @@ class CurrencyConverterViewTests(TestCase):
         mock_get_rate.assert_called_once_with("CZK", "EUR")
 
     @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
+    def test_rate_line_formats_for_accept_language(self, mock_get_rate):
+        response = self.client.get(
+            reverse("currency_converter"),
+            HTTP_ACCEPT_LANGUAGE="cs-CZ,cs;q=0.9",
+        )
+
+        self.assertContains(response, "0,0401")
+        self.assertContains(response, "financetracker/js/money.js")
+
+    @patch("financetracker.views.get_rate", return_value=RateResult(rate=Decimal("0.0401")))
     def test_get_amount_query_param_repopulates_form_without_result(self, mock_get_rate):
         response = self.client.get(
             reverse("currency_converter"),

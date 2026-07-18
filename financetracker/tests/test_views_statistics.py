@@ -235,3 +235,30 @@ class StatisticsViewsTests(TestCase):
 
         self.assertEqual(response.context["total_income"], 250.0)
         self.assertEqual(response.context["total_count"], 1)
+
+    def test_statistics_charts_use_shared_money_formatter(self):
+        response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "financetracker/js/money.js")
+        self.assertContains(response, "FinanceTrackerMoney")
+        self.assertContains(response, "money.formatMoney")
+        self.assertNotContains(response, 'toLocaleString("cs-CZ")')
+
+    def test_statistics_formats_totals_for_accept_language(self):
+        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        create_transaction(
+            self.user,
+            amount=Decimal("1234.56"),
+            type=Transaction.INCOME,
+            category=self.category,
+            transaction_date=date.today(),
+        )
+
+        response = self.client.get(
+            reverse("statistics"),
+            HTTP_ACCEPT_LANGUAGE="cs-CZ,cs;q=0.9",
+        )
+
+        self.assertEqual(response.context["display_locale"], "cs")
+        self.assertContains(response, "1\xa0234,56")

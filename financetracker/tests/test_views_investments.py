@@ -31,6 +31,20 @@ class InvestmentViewsTests(TestCase):
         self.assertEqual(response.context["invested_count"], 2)
         self.assertEqual(response.context["profit_count"], 1)
 
+    def test_investments_formats_amounts_for_accept_language(self):
+        create_investment(
+            self.user,
+            amount=Decimal("1234.56"),
+            type=InvestmentEntry.INVESTED,
+        )
+
+        response = self.client.get(
+            reverse("investments"),
+            HTTP_ACCEPT_LANGUAGE="cs-CZ,cs;q=0.9",
+        )
+
+        self.assertContains(response, "1\xa0234,56 CZK")
+
     def test_add_investment(self):
         response = self.client.post(
             reverse("add_investment"),
