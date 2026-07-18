@@ -7,9 +7,12 @@ from django.test import TestCase
 from financetracker.models import Category, IOU, Transaction
 from financetracker.services.currency import RateResult
 from financetracker.services.iou import (
+    BORROWING_CATEGORY_NAME,
     LENDING_CATEGORY_NAME,
     compute_open_iou_adjustment,
+    create_payable,
     create_receivable,
+    ensure_borrowing_category,
     ensure_lending_category,
 )
 from financetracker.tests.factories import create_iou, create_transaction, create_user
@@ -153,3 +156,107 @@ class IouServiceTests(TestCase):
 
         self.assertTrue(result.conversion_degraded)
         self.assertIsNone(result.net_adjustment)
+
+    def test_create_payable_creates_income_and_active_iou_atomically(self):
+        iou = create_payable(
+            self.user,
+            counterparty_name="Sam",
+            amount=Decimal("300.00"),
+            currency="CZK",
+            due_date=date(2026, 9, 1),
+        )
+
+        self.assertEqual(IOU.objects.count(), 1)
+        self.assertEqual(Transaction.objects.count(), 1)
+        self.assertEqual(iou.direction, IOU.PAYABLE)
+        self.assertEqual(iou.status, IOU.ACTIVE)
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+        self.assertEqual(iou.counterparty_name, "Sam")
+        self.assertEqual(iou.due_date, date(2026, 9, 1))
+
+        opening = iou.opening_transaction
+        self.assertEqual(opening.type, Transaction.INCOME)
+        self.assertEqual(opening.amount, Decimal("300.00"))
+        self.assertEqual(opening.currency, "CZK")
+        self.assertEqual(opening.category.name, BORROWING_CATEGORY_NAME)
+        self.assertEqual(opening.category.type, Category.INCOME)
+        self.assertIn("Sam", opening.description)
+
+    def test_ensure_borrowing_category_is_idempotent(self):
+        first = ensure_borrowing_category()
+        second = ensure_borrowing_category()
+        self.assertEqual(first.pk, second.pk)
+        self.assertEqual(
+            Category.objects.filter(name=BORROWING_CATEGORY_NAME, type=Category.INCOME).count(),
+            1,
+        )
+
+    def test_compute_open_iou_adjustment_subtracts_active_payables(self):
+        create_iou(
+            self.user,
+            amount=Decimal("400.00"),
+            currency="CZK",
+            direction=IOU.RECEIVABLE,
+            status=IOU.ACTIVE,
+        )
+        create_iou(
+            self.user,
+            amount=Decimal("150.00"),
+            currency="CZK",
+            direction=IOU.PAYABLE,
+            status=IOU.ACTIVE,
+            opening_transaction=create_transaction(
+                self.user,
+                amount=Decimal("150.00"),
+                currency="CZK",
+                type=Transaction.INCOME,
+            ),
+        )
+        create_iou(
+            self.user,
+            amount=Decimal("50.00"),
+            currency="CZK",
+            direction=IOU.PAYABLE,
+            status=IOU.PAID,
+            opening_transaction=create_transaction(
+                self.user,
+                amount=Decimal("50.00"),
+                currency="CZK",
+                type=Transaction.INCOME,
+            ),
+        )
+
+        result = compute_open_iou_adjustment(self.user, "CZK")
+
+        self.assertFalse(result.conversion_degraded)
+        self.assertEqual(result.receivable_total, Decimal("400.00"))
+        self.assertEqual(result.payable_total, Decimal("150.00"))
+        self.assertEqual(result.net_adjustment, Decimal("250.00"))
+
+    def test_borrow_increases_available_but_reduces_total(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        create_payable(
+            self.user,
+            counterparty_name="Sam",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        from financetracker.services.display_conversion import convert_for_display
+
+        display = convert_for_display(
+            Transaction.objects.filter(user=self.user),
+            "CZK",
+        )
+        adjustment = compute_open_iou_adjustment(self.user, "CZK")
+
+        available = display.balance
+        total = available + adjustment.net_adjustment
+
+        self.assertEqual(available, Decimal("1500.00"))
+        self.assertEqual(total, Decimal("1000.00"))

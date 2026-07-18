@@ -11,6 +11,8 @@ from financetracker.services.currency import get_rates
 
 LENDING_CATEGORY_NAME = "Lending"
 LENDING_CATEGORY_ICON = "🤝"
+BORROWING_CATEGORY_NAME = "Borrowing"
+BORROWING_CATEGORY_ICON = "💸"
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,15 @@ def ensure_lending_category() -> Category:
         name=LENDING_CATEGORY_NAME,
         type=Category.EXPENSE,
         defaults={"icon": LENDING_CATEGORY_ICON},
+    )
+    return category
+
+
+def ensure_borrowing_category() -> Category:
+    category, _created = Category.objects.get_or_create(
+        name=BORROWING_CATEGORY_NAME,
+        type=Category.INCOME,
+        defaults={"icon": BORROWING_CATEGORY_ICON},
     )
     return category
 
@@ -60,6 +71,41 @@ def create_receivable(
         return IOU.objects.create(
             user=user,
             direction=IOU.RECEIVABLE,
+            counterparty_name=counterparty_name,
+            original_amount=amount,
+            remaining_amount=amount,
+            currency=currency,
+            due_date=due_date,
+            status=IOU.ACTIVE,
+            opening_transaction=opening,
+        )
+
+
+def create_payable(
+    user: User,
+    *,
+    counterparty_name: str,
+    amount: Decimal,
+    currency: str,
+    due_date: date | None = None,
+    transaction_date: date | None = None,
+) -> IOU:
+    borrowing_category = ensure_borrowing_category()
+    on_date = transaction_date or timezone.now().date()
+
+    with transaction.atomic():
+        opening = Transaction.objects.create(
+            user=user,
+            type=Transaction.INCOME,
+            amount=amount,
+            currency=currency,
+            category=borrowing_category,
+            description=f"Borrowed from {counterparty_name}",
+            date=on_date,
+        )
+        return IOU.objects.create(
+            user=user,
+            direction=IOU.PAYABLE,
             counterparty_name=counterparty_name,
             original_amount=amount,
             remaining_amount=amount,

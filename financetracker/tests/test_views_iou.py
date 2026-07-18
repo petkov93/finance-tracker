@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from financetracker.models import IOU, Transaction, ensure_user_profile
 from financetracker.services.currency import RateResult
-from financetracker.services.iou import create_receivable
+from financetracker.services.iou import create_payable, create_receivable
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_iou,
@@ -68,6 +68,50 @@ class IouViewsTests(TestCase):
         self.assertEqual(len(receivables), 1)
         self.assertEqual(receivables[0].counterparty_name, "Jamie")
 
+    def test_ious_lists_only_active_payables_for_signed_in_user(self):
+        create_payable(
+            self.user,
+            counterparty_name="Sam",
+            amount=Decimal("300.00"),
+            currency="CZK",
+        )
+        create_iou(
+            self.other_user,
+            counterparty_name="Other",
+            amount=Decimal("999.00"),
+            currency="CZK",
+            direction=IOU.PAYABLE,
+            opening_transaction=create_transaction(
+                self.other_user,
+                amount=Decimal("999.00"),
+                currency="CZK",
+                type=Transaction.INCOME,
+            ),
+        )
+        create_iou(
+            self.user,
+            counterparty_name="Closed",
+            amount=Decimal("50.00"),
+            currency="CZK",
+            direction=IOU.PAYABLE,
+            status=IOU.PAID,
+            opening_transaction=create_transaction(
+                self.user,
+                amount=Decimal("50.00"),
+                currency="CZK",
+                type=Transaction.INCOME,
+            ),
+        )
+
+        response = self.client.get(reverse("ious"))
+
+        self.assertEqual(response.status_code, 200)
+        payables = list(response.context["payables"])
+        self.assertEqual(len(payables), 1)
+        self.assertEqual(payables[0].counterparty_name, "Sam")
+        self.assertContains(response, "Active payables")
+        self.assertContains(response, "Borrowed")
+
     def test_add_lend_creates_receivable_and_redirects(self):
         response = self.client.post(
             reverse("add_lend"),
@@ -85,6 +129,25 @@ class IouViewsTests(TestCase):
         self.assertEqual(iou.counterparty_name, "Jamie")
         self.assertEqual(iou.remaining_amount, Decimal("500.00"))
         self.assertEqual(iou.opening_transaction.category.name, "Lending")
+
+    def test_add_borrow_creates_payable_and_redirects(self):
+        response = self.client.post(
+            reverse("add_borrow"),
+            {
+                "counterparty_name": "Sam",
+                "amount": "300.00",
+                "currency": "CZK",
+                "date": "2026-07-01",
+                "due_date": "2026-09-01",
+            },
+        )
+
+        self.assertRedirects(response, reverse("ious"))
+        iou = IOU.objects.get(user=self.user, direction=IOU.PAYABLE)
+        self.assertEqual(iou.counterparty_name, "Sam")
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+        self.assertEqual(iou.opening_transaction.category.name, "Borrowing")
+        self.assertEqual(iou.opening_transaction.type, Transaction.INCOME)
 
     def test_dashboard_exposes_available_and_total_context_keys(self):
         create_transaction(
@@ -104,6 +167,26 @@ class IouViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["available"], Decimal("500.00"))
+        self.assertEqual(response.context["total"], Decimal("1000.00"))
+
+    def test_dashboard_total_reflects_open_payables(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        create_payable(
+            self.user,
+            counterparty_name="Sam",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["available"], Decimal("1500.00"))
         self.assertEqual(response.context["total"], Decimal("1000.00"))
 
     def test_dashboard_degradation_hides_available_and_total(self):

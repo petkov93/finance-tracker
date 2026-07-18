@@ -8,7 +8,10 @@
     <p class="page-eyebrow">Loans</p>
     <h1 class="page-title">IOUs</h1>
   </div>
-  <a href="{% url 'add_lend' %}" class="btn btn-primary">+ Lend money</a>
+  <div class="page-actions">
+    <a href="{% url 'add_lend' %}" class="btn btn-primary">+ Lend money</a>
+    <a href="{% url 'add_borrow' %}" class="btn btn-ghost">+ Borrow money</a>
+  </div>
 </div>
 
 <section class="section animate-in animate-in-delay-1">
@@ -52,6 +55,51 @@
       <p class="empty-title">No open receivables</p>
       <p class="empty-sub">Record money you lent to track who owes you and when it is due.</p>
       <a href="{% url 'add_lend' %}" class="btn btn-primary">Record a loan</a>
+    </div>
+  {% endif %}
+</section>
+
+<section class="section animate-in animate-in-delay-2">
+  <div class="section-header">
+    <h2 class="section-title">Active payables</h2>
+    <span class="link-muted">{{ payable_count }} open</span>
+  </div>
+
+  {% if payables %}
+    <div class="transaction-list">
+      {% for iou in payables %}
+        <div class="transaction-row">
+          <div class="transaction-left">
+            <div class="transaction-icon icon-income">←</div>
+            <div class="transaction-info">
+              <div class="transaction-desc">{{ iou.counterparty_name }}</div>
+              <div class="transaction-meta">
+                Borrowed {{ iou.original_amount|floatformat:2 }} {{ iou.currency }}
+                {% if iou.due_date %}
+                  · Due {{ iou.due_date|date:"d.m.Y" }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="transaction-right">
+            <div class="transaction-amount amount-income">
+              {% money iou.remaining_amount iou.currency %}
+            </div>
+            <div class="transaction-meta">remaining</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <svg class="empty-illustration" width="80" height="80" viewBox="0 0 80 80" fill="none" aria-hidden="true">
+        <circle cx="28" cy="28" r="12" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="52" cy="28" r="12" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M16 56c0-8 6-14 14-14h20c8 0 14 6 14 14" stroke="currentColor" stroke-width="1.5" fill="none"/>
+      </svg>
+      <p class="empty-title">No open payables</p>
+      <p class="empty-sub">Record money you borrowed to track what you still owe and when it is due.</p>
+      <a href="{% url 'add_borrow' %}" class="btn btn-primary">Record a borrow</a>
     </div>
   {% endif %}
 </section>

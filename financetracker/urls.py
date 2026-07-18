@@ -17,6 +17,7 @@ urlpatterns = [
     path("investments/delete/<int:pk>/", views.delete_investment, name="delete_investment"),
     path("ious/", views.ious, name="ious"),
     path("ious/lend/", views.add_lend, name="add_lend"),
+    path("ious/borrow/", views.add_borrow, name="add_borrow"),
     path("converter/", views.currency_converter, name="currency_converter"),
     path("converter/rate/", views.converter_rate_api, name="converter_rate_api"),
     path("converter/convert/", views.converter_convert_api, name="converter_convert_api"),
