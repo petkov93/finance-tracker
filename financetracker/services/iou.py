@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -13,6 +13,7 @@ LENDING_CATEGORY_NAME = "Lending"
 LENDING_CATEGORY_ICON = "🤝"
 BORROWING_CATEGORY_NAME = "Borrowing"
 BORROWING_CATEGORY_ICON = "💸"
+IOU_ALERT_WINDOW_DAYS = 7
 
 
 @dataclass(frozen=True)
@@ -170,3 +171,16 @@ def _convert_iou_amount(
         return None
 
     return iou.remaining_amount * result.rate
+
+
+def upcoming_iou_alerts(user: User, *, today: date | None = None) -> list[IOU]:
+    on_date = today or timezone.now().date()
+    window_end = on_date + timedelta(days=IOU_ALERT_WINDOW_DAYS)
+    return list(
+        IOU.objects.filter(
+            user=user,
+            status=IOU.ACTIVE,
+            due_date__isnull=False,
+            due_date__lte=window_end,
+        ).order_by("due_date", "counterparty_name")
+    )

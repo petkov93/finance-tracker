@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -14,6 +14,7 @@ from financetracker.services.iou import (
     create_receivable,
     ensure_borrowing_category,
     ensure_lending_category,
+    upcoming_iou_alerts,
 )
 from financetracker.tests.factories import create_iou, create_transaction, create_user
 
@@ -260,3 +261,89 @@ class IouServiceTests(TestCase):
 
         self.assertEqual(available, Decimal("1500.00"))
         self.assertEqual(total, Decimal("1000.00"))
+
+
+class UpcomingIouAlertsTests(TestCase):
+    def setUp(self):
+        self.user = create_user()
+        self.other_user = create_user(username="bob")
+        self.today = date(2026, 7, 18)
+
+    def test_includes_overdue_active_iou_with_due_date(self):
+        overdue = create_iou(
+            self.user,
+            counterparty_name="Overdue",
+            due_date=self.today - timedelta(days=3),
+        )
+
+        alerts = upcoming_iou_alerts(self.user, today=self.today)
+
+        self.assertEqual([overdue], alerts)
+
+    def test_includes_iou_due_within_seven_days(self):
+        due_soon = create_iou(
+            self.user,
+            counterparty_name="Soon",
+            due_date=self.today + timedelta(days=5),
+        )
+        create_iou(
+            self.user,
+            counterparty_name="Later",
+            due_date=self.today + timedelta(days=8),
+        )
+
+        alerts = upcoming_iou_alerts(self.user, today=self.today)
+
+        self.assertEqual([due_soon], alerts)
+
+    def test_includes_iou_due_exactly_seven_days_out(self):
+        on_window = create_iou(
+            self.user,
+            counterparty_name="Edge",
+            due_date=self.today + timedelta(days=7),
+        )
+
+        alerts = upcoming_iou_alerts(self.user, today=self.today)
+
+        self.assertEqual([on_window], alerts)
+
+    def test_excludes_iou_without_due_date(self):
+        create_iou(self.user, counterparty_name="Open ended", due_date=None)
+
+        alerts = upcoming_iou_alerts(self.user, today=self.today)
+
+        self.assertEqual(alerts, [])
+
+    def test_excludes_closed_ious(self):
+        create_iou(
+            self.user,
+            counterparty_name="Paid",
+            due_date=self.today,
+            status=IOU.PAID,
+        )
+        create_iou(
+            self.user,
+            counterparty_name="Unpaid",
+            due_date=self.today,
+            status=IOU.UNPAID,
+        )
+
+        alerts = upcoming_iou_alerts(self.user, today=self.today)
+
+        self.assertEqual(alerts, [])
+
+    def test_only_includes_signed_in_users_ious(self):
+        mine = create_iou(
+            self.user,
+            counterparty_name="Mine",
+            due_date=self.today,
+        )
+        create_iou(
+            self.other_user,
+            counterparty_name="Theirs",
+            due_date=self.today,
+        )
+
+        alerts = upcoming_iou_alerts(self.user, today=self.today)
+
+        self.assertEqual([mine], alerts)

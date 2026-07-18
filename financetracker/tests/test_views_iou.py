@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -219,3 +219,49 @@ class IouViewsTests(TestCase):
         response = self.client.get(reverse("dashboard"))
         self.assertContains(response, reverse("ious"))
         self.assertContains(response, ">IOUs<")
+
+    def test_dashboard_shows_iou_alerts_strip_when_due_soon(self):
+        create_iou(
+            self.user,
+            counterparty_name="Jamie",
+            due_date=date.today() + timedelta(days=3),
+        )
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertContains(response, "IOUs due soon or overdue")
+        self.assertContains(response, "Jamie")
+
+    def test_dashboard_hides_iou_alerts_strip_when_none_due(self):
+        create_iou(
+            self.user,
+            counterparty_name="Later",
+            due_date=date.today() + timedelta(days=30),
+        )
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertNotContains(response, "IOUs due soon or overdue")
+
+    def test_sidebar_badge_matches_iou_alert_count(self):
+        create_iou(
+            self.user,
+            counterparty_name="One",
+            due_date=date.today(),
+        )
+        create_iou(
+            self.user,
+            counterparty_name="Two",
+            due_date=date.today() + timedelta(days=2),
+        )
+        create_iou(
+            self.user,
+            counterparty_name="Later",
+            due_date=date.today() + timedelta(days=30),
+        )
+
+        response = self.client.get(reverse("statistics"))
+
+        self.assertContains(response, 'class="sidebar-badge"')
+        self.assertContains(response, 'aria-label="2 IOU due soon"')
+        self.assertContains(response, ">2<")
