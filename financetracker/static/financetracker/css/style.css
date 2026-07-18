@@ -904,6 +904,15 @@ body.sidebar-collapsed .sidebar-link.active::before {
 .transaction-row:last-child { border-bottom: none; }
 .transaction-row:hover { background: var(--hover-wash); }
 
+a.transaction-row--link {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.transaction-row--link:hover {
+  color: inherit;
+}
+
 .transaction-left {
   display: flex;
   align-items: center;

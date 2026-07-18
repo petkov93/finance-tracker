@@ -14,6 +14,7 @@ from financetracker.services.iou import (
     create_receivable,
     ensure_borrowing_category,
     ensure_lending_category,
+    record_repayment,
     upcoming_iou_alerts,
 )
 from financetracker.tests.factories import create_iou, create_transaction, create_user
@@ -233,6 +234,112 @@ class IouServiceTests(TestCase):
         self.assertEqual(result.receivable_total, Decimal("400.00"))
         self.assertEqual(result.payable_total, Decimal("150.00"))
         self.assertEqual(result.net_adjustment, Decimal("250.00"))
+
+    def test_partial_repayment_updates_available_total_and_remaining(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        record_repayment(iou, amount=Decimal("200.00"))
+
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+        self.assertEqual(iou.status, IOU.ACTIVE)
+
+        repayment = iou.repayments.get()
+        self.assertEqual(repayment.amount, Decimal("200.00"))
+        self.assertEqual(repayment.transaction.type, Transaction.INCOME)
+        self.assertEqual(repayment.transaction.category.name, LENDING_CATEGORY_NAME)
+        self.assertIn("Jamie", repayment.transaction.description)
+
+        from financetracker.services.display_conversion import convert_for_display
+
+        display = convert_for_display(
+            Transaction.objects.filter(user=self.user),
+            "CZK",
+        )
+        adjustment = compute_open_iou_adjustment(self.user, "CZK")
+
+        available = display.balance
+        total = available + adjustment.net_adjustment
+
+        self.assertEqual(available, Decimal("700.00"))
+        self.assertEqual(total, Decimal("1000.00"))
+
+    def test_full_repayment_closes_iou_as_paid(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        record_repayment(iou, amount=Decimal("500.00"))
+
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("0"))
+        self.assertEqual(iou.status, IOU.PAID)
+
+        adjustment = compute_open_iou_adjustment(self.user, "CZK")
+        self.assertEqual(adjustment.net_adjustment, Decimal("0"))
+
+    def test_repayment_on_payable_creates_expense_with_borrowing_category(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        iou = create_payable(
+            self.user,
+            counterparty_name="Sam",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        record_repayment(iou, amount=Decimal("200.00"))
+
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+        self.assertEqual(iou.status, IOU.ACTIVE)
+
+        repayment = iou.repayments.get()
+        self.assertEqual(repayment.transaction.type, Transaction.EXPENSE)
+        self.assertEqual(repayment.transaction.category.name, BORROWING_CATEGORY_NAME)
+
+        from financetracker.services.display_conversion import convert_for_display
+
+        display = convert_for_display(
+            Transaction.objects.filter(user=self.user),
+            "CZK",
+        )
+        adjustment = compute_open_iou_adjustment(self.user, "CZK")
+
+        available = display.balance
+        total = available + adjustment.net_adjustment
+
+        self.assertEqual(available, Decimal("1300.00"))
+        self.assertEqual(total, Decimal("1000.00"))
+
+    def test_repayment_cannot_exceed_remaining_amount(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        with self.assertRaises(ValueError):
+            record_repayment(iou, amount=Decimal("500.01"))
 
     def test_borrow_increases_available_but_reduces_total(self):
         create_transaction(

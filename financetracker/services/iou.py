@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils import timezone
 
-from financetracker.models import Category, IOU, Transaction
+from financetracker.models import Category, IOU, IOURepayment, Transaction
 from financetracker.services.currency import get_rates
 
 LENDING_CATEGORY_NAME = "Lending"
@@ -114,6 +114,53 @@ def create_payable(
             due_date=due_date,
             status=IOU.ACTIVE,
             opening_transaction=opening,
+        )
+
+
+def record_repayment(
+    iou: IOU,
+    *,
+    amount: Decimal,
+    transaction_date: date | None = None,
+) -> IOURepayment:
+    if iou.status != IOU.ACTIVE:
+        raise ValueError("Can only repay active IOUs.")
+    if amount <= 0:
+        raise ValueError("Repayment amount must be positive.")
+    if amount > iou.remaining_amount:
+        raise ValueError("Repayment amount cannot exceed remaining amount.")
+
+    on_date = transaction_date or timezone.now().date()
+
+    with transaction.atomic():
+        if iou.direction == IOU.RECEIVABLE:
+            category = ensure_lending_category()
+            tx_type = Transaction.INCOME
+            description = f"Repayment from {iou.counterparty_name}"
+        else:
+            category = ensure_borrowing_category()
+            tx_type = Transaction.EXPENSE
+            description = f"Repayment to {iou.counterparty_name}"
+
+        repayment_tx = Transaction.objects.create(
+            user=iou.user,
+            type=tx_type,
+            amount=amount,
+            currency=iou.currency,
+            category=category,
+            description=description,
+            date=on_date,
+        )
+
+        iou.remaining_amount -= amount
+        if iou.remaining_amount == 0:
+            iou.status = IOU.PAID
+        iou.save(update_fields=["remaining_amount", "status", "updated_at"])
+
+        return IOURepayment.objects.create(
+            iou=iou,
+            transaction=repayment_tx,
+            amount=amount,
         )
 
 
