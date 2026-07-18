@@ -96,7 +96,8 @@ class TransactionViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["total_income"], Decimal("1000.00"))
         self.assertEqual(response.context["total_expense"], Decimal("350.00"))
-        self.assertEqual(response.context["balance"], Decimal("650.00"))
+        self.assertEqual(response.context["available"], Decimal("650.00"))
+        self.assertEqual(response.context["total"], Decimal("650.00"))
 
     def test_dashboard_category_filter(self):
         food = create_category(name="Food")
@@ -143,7 +144,8 @@ class TransactionViewsTests(TestCase):
 
         self.assertEqual(response.context["total_income"], Decimal("250.00"))
         self.assertEqual(response.context["total_expense"], Decimal("100.00"))
-        self.assertEqual(response.context["balance"], Decimal("150.00"))
+        self.assertEqual(response.context["available"], Decimal("150.00"))
+        self.assertEqual(response.context["total"], Decimal("150.00"))
 
     def test_dashboard_dual_amount_display_for_foreign_currency(self):
         past = date.today() - timedelta(days=7)
@@ -244,10 +246,11 @@ class TransactionViewsTests(TestCase):
             response = self.client.get(reverse("dashboard"))
 
         self.assertTrue(response.context["conversion_degraded"])
-        self.assertIsNone(response.context["balance"])
+        self.assertIsNone(response.context["available"])
+        self.assertIsNone(response.context["total"])
         self.assertContains(response, "Exchange rates are unavailable")
         self.assertContains(response, "10.00 EUR")
-        self.assertNotContains(response, "hero-stats")
+        self.assertNotContains(response, "hero-stats--balances")
 
     def test_dashboard_stale_rates_show_info_banner_and_totals(self):
         UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
@@ -268,7 +271,8 @@ class TransactionViewsTests(TestCase):
 
         self.assertFalse(response.context["conversion_degraded"])
         self.assertEqual(response.context["rates_stale_date"], yesterday)
-        self.assertEqual(response.context["balance"], Decimal("250.00"))
+        self.assertEqual(response.context["available"], Decimal("250.00"))
+        self.assertEqual(response.context["total"], Decimal("250.00"))
         self.assertContains(response, "Exchange rates from")
         self.assertContains(response, yesterday.isoformat())
         self.assertContains(response, "hero-stats")

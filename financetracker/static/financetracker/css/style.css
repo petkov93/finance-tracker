@@ -508,8 +508,17 @@ body.sidebar-collapsed .sidebar-link.active::before {
   font-size: clamp(1.85rem, 3.5vw + 0.5rem, 2.35rem);
 }
 
+.hero-stats--balances {
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 1rem;
+}
+
 @media (max-width: 960px) {
   .hero-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-stats--balances {
     grid-template-columns: 1fr;
   }
 
@@ -522,6 +531,19 @@ body.sidebar-collapsed .sidebar-link.active::before {
 
 @media (max-width: 520px) {
   .hero-secondary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-totals {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 2.25rem;
+}
+
+@media (max-width: 520px) {
+  .dashboard-totals {
     grid-template-columns: 1fr;
   }
 }

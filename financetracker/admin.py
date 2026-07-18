@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Category, InvestmentEntry, Transaction, UserProfile
+from .models import Category, InvestmentEntry, IOU, Transaction, UserProfile
 
 
 @admin.register(UserProfile)
@@ -31,3 +31,19 @@ class InvestmentEntryAdmin(admin.ModelAdmin):
     list_filter = ["type", "date"]
     search_fields = ["description"]
     raw_id_fields = ["user"]
+
+
+@admin.register(IOU)
+class IOUAdmin(admin.ModelAdmin):
+    list_display = [
+        "counterparty_name",
+        "direction",
+        "remaining_amount",
+        "currency",
+        "status",
+        "due_date",
+        "user",
+    ]
+    list_filter = ["direction", "status"]
+    search_fields = ["counterparty_name"]
+    raw_id_fields = ["user", "opening_transaction"]

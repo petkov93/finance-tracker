@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 
-from financetracker.models import Category, InvestmentEntry, Transaction
+from financetracker.models import Category, InvestmentEntry, IOU, Transaction
 
 DEFAULT_PASSWORD = "pass1234"
 
@@ -51,4 +51,35 @@ def create_investment(
         amount=amount,
         description=description,
         date=entry_date or date.today(),
+    )
+
+
+def create_iou(
+    user,
+    *,
+    counterparty_name="Alex",
+    amount=Decimal("100.00"),
+    currency="CZK",
+    direction=IOU.RECEIVABLE,
+    status=IOU.ACTIVE,
+    due_date=None,
+    opening_transaction=None,
+):
+    if opening_transaction is None:
+        opening_transaction = create_transaction(
+            user,
+            amount=amount,
+            currency=currency,
+            type=Transaction.EXPENSE,
+        )
+    return IOU.objects.create(
+        user=user,
+        direction=direction,
+        counterparty_name=counterparty_name,
+        original_amount=amount,
+        remaining_amount=amount,
+        currency=currency,
+        due_date=due_date,
+        status=status,
+        opening_transaction=opening_transaction,
     )

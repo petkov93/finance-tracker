@@ -1,0 +1,58 @@
+{% extends "financetracker/base.html" %}
+{% load money %}
+{% block title %}IOUs — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Loans</p>
+    <h1 class="page-title">IOUs</h1>
+  </div>
+  <a href="{% url 'add_lend' %}" class="btn btn-primary">+ Lend money</a>
+</div>
+
+<section class="section animate-in animate-in-delay-1">
+  <div class="section-header">
+    <h2 class="section-title">Active receivables</h2>
+    <span class="link-muted">{{ receivable_count }} open</span>
+  </div>
+
+  {% if receivables %}
+    <div class="transaction-list">
+      {% for iou in receivables %}
+        <div class="transaction-row">
+          <div class="transaction-left">
+            <div class="transaction-icon icon-expense">→</div>
+            <div class="transaction-info">
+              <div class="transaction-desc">{{ iou.counterparty_name }}</div>
+              <div class="transaction-meta">
+                Lent {{ iou.original_amount|floatformat:2 }} {{ iou.currency }}
+                {% if iou.due_date %}
+                  · Due {{ iou.due_date|date:"d.m.Y" }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="transaction-right">
+            <div class="transaction-amount amount-expense">
+              {% money iou.remaining_amount iou.currency %}
+            </div>
+            <div class="transaction-meta">remaining</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <svg class="empty-illustration" width="80" height="80" viewBox="0 0 80 80" fill="none" aria-hidden="true">
+        <circle cx="28" cy="28" r="12" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="52" cy="28" r="12" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M16 56c0-8 6-14 14-14h20c8 0 14 6 14 14" stroke="currentColor" stroke-width="1.5" fill="none"/>
+      </svg>
+      <p class="empty-title">No open receivables</p>
+      <p class="empty-sub">Record money you lent to track who owes you and when it is due.</p>
+      <a href="{% url 'add_lend' %}" class="btn btn-primary">Record a loan</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

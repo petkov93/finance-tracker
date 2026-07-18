@@ -1,0 +1,55 @@
+{% extends "financetracker/base.html" %}
+{% block title %}{{ title }} — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">IOU</p>
+    <h1 class="page-title">{{ title }}</h1>
+  </div>
+  <a href="{% url 'ious' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+<div class="form-card">
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.counterparty_name.id_for_label }}">{{ form.counterparty_name.label }}</label>
+      {{ form.counterparty_name }}
+      {% if form.counterparty_name.errors %}<div class="form-error">{{ form.counterparty_name.errors.0 }}</div>{% endif %}
+    </div>
+
+    <div class="filter-grid">
+      <div class="form-group">
+        <label class="form-label" for="{{ form.amount.id_for_label }}">Amount</label>
+        {{ form.amount }}
+        {% if form.amount.errors %}<div class="form-error">{{ form.amount.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="{{ form.currency.id_for_label }}">{{ form.currency.label }}</label>
+        {{ form.currency }}
+        {% if form.currency.errors %}<div class="form-error">{{ form.currency.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="filter-grid">
+      <div class="form-group">
+        <label class="form-label" for="{{ form.date.id_for_label }}">{{ form.date.label }}</label>
+        {{ form.date }}
+        {% if form.date.errors %}<div class="form-error">{{ form.date.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="{{ form.due_date.id_for_label }}">{{ form.due_date.label }} <span class="text-muted">(optional)</span></label>
+        {{ form.due_date }}
+        {% if form.due_date.errors %}<div class="form-error">{{ form.due_date.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <a href="{% url 'ious' %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary">Record loan</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

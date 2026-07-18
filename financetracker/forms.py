@@ -1,8 +1,10 @@
+from decimal import Decimal
+
 from django import forms
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import InvestmentEntry, Transaction, UserProfile
+from .models import InvestmentEntry, IOU, Transaction, UserProfile
 
 COMMON_CURRENCY_CODES = ("CZK", "USD", "EUR", "JPY", "GBP", "CNY")
 
@@ -168,6 +170,54 @@ class InvestmentEntryForm(forms.ModelForm):
             "description": forms.TextInput(attrs={"class": "form-control", "placeholder": "Optional note..."}),
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
         }
+
+
+class LendForm(forms.Form):
+    counterparty_name = forms.CharField(
+        max_length=255,
+        label="Who did you lend to?",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "Name or nickname"},
+        ),
+    )
+    amount = forms.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "step": "0.01", "min": "0.01", "placeholder": "0.00"},
+        ),
+    )
+    currency = forms.ChoiceField(
+        choices=[],
+        required=True,
+        label="Currency",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    due_date = forms.DateField(
+        required=False,
+        label="Due date",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+    date = forms.DateField(
+        label="Transaction date",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+
+    def __init__(self, *args, currency_choices=None, default_currency=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = list(currency_choices or [])
+        self.fields["currency"].choices = choices
+        if default_currency and not self.is_bound:
+            self.fields["currency"].initial = default_currency
+
+    def clean_currency(self):
+        code = self.cleaned_data.get("currency", "")
+        valid_codes = set(currency_choice_values(self.fields["currency"].choices))
+        normalized = code.upper()
+        if normalized not in valid_codes:
+            raise forms.ValidationError("Select a supported currency.")
+        return normalized
 
 
 class CurrencyConverterForm(forms.Form):
