@@ -4,12 +4,41 @@ from django.contrib.auth.models import User
 
 from .models import InvestmentEntry, Transaction, UserProfile
 
+COMMON_CURRENCY_CODES = ("CZK", "USD", "EUR", "JPY", "GBP", "CNY")
+
 
 def build_currency_choices(supported_currencies):
-    return sorted(
-        ((code, f"{code} — {name}") for code, name in supported_currencies.items()),
+    normalized = {
+        str(code).upper(): name for code, name in supported_currencies.items()
+    }
+
+    def label(code):
+        return f"{code} — {normalized[code]}"
+
+    all_choices = sorted(
+        ((code, label(code)) for code in normalized),
         key=lambda item: item[0],
     )
+    common_choices = [
+        (code, label(code)) for code in COMMON_CURRENCY_CODES if code in normalized
+    ]
+
+    groups = []
+    if common_choices:
+        groups.append(("Common currencies", common_choices))
+    groups.append(("All currencies", all_choices))
+    return groups
+
+
+def currency_choice_values(choices):
+    """Yield option values from flat or optgroup ChoiceField choices."""
+    for key, value in choices:
+        if isinstance(value, (list, tuple)):
+            for option_key, _option_label in value:
+                if option_key:
+                    yield option_key
+        elif key:
+            yield key
 
 
 class ProfileForm(forms.ModelForm):
@@ -60,7 +89,7 @@ class RegistrationForm(UserCreationForm):
 
     def clean_default_currency(self):
         code = self.cleaned_data.get("default_currency", "")
-        valid_codes = {choice[0] for choice in self.fields["default_currency"].choices if choice[0]}
+        valid_codes = set(currency_choice_values(self.fields["default_currency"].choices))
         normalized = code.upper()
         if not normalized or normalized not in valid_codes:
             raise forms.ValidationError("Select a supported default currency.")
@@ -85,7 +114,7 @@ class DefaultCurrencyForm(forms.ModelForm):
 
     def clean_default_currency(self):
         code = self.cleaned_data.get("default_currency", "")
-        valid_codes = {choice[0] for choice in self.fields["default_currency"].choices}
+        valid_codes = set(currency_choice_values(self.fields["default_currency"].choices))
         normalized = code.upper()
         if normalized not in valid_codes:
             raise forms.ValidationError("Select a supported default currency.")
@@ -122,7 +151,7 @@ class TransactionForm(forms.ModelForm):
 
     def clean_currency(self):
         code = self.cleaned_data.get("currency", "")
-        valid_codes = {choice[0] for choice in self.fields["currency"].choices}
+        valid_codes = set(currency_choice_values(self.fields["currency"].choices))
         normalized = code.upper()
         if normalized not in valid_codes:
             raise forms.ValidationError("Select a supported currency.")

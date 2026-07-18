@@ -96,6 +96,8 @@ class SettingsViewsTests(TestCase):
         self.assertContains(response, '<option value="CZK"')
         self.assertContains(response, '<option value="EUR"')
         self.assertContains(response, '<option value="USD"')
+        self.assertContains(response, '<optgroup label="Common currencies">')
+        self.assertContains(response, '<optgroup label="All currencies">')
 
     def test_default_currency_update(self):
         response = self.client.post(
