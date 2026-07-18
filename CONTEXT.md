@@ -8,6 +8,14 @@ Personal finance tracking for day-to-day income, expenses, and investments. Tran
 The unit of account a user thinks in for dashboard balances and statistics.
 _Avoid_: Display currency, home currency, preferred currency
 
+**Supported currency**:
+A currency the app accepts for Default currency, Transaction currency, and currency conversion, from the rate source’s available set.
+_Avoid_: Valid currency, allowed currency, known currency
+
+**Common currencies**:
+A fixed, product-curated subset of supported currencies shown first in currency pickers for quicker selection.
+_Avoid_: Recommended currencies, popular currencies, weighted currencies, featured currencies
+
 **Transaction currency**:
 The currency in which a transaction amount was actually paid or received.
 _Avoid_: Native currency, native code, source currency, original currency field
