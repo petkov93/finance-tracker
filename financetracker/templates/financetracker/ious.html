@@ -103,4 +103,42 @@
     </div>
   {% endif %}
 </section>
+
+{% if closed_count %}
+<section class="section animate-in animate-in-delay-3">
+  <details class="filter-panel">
+    <summary class="filter-panel-toggle">Closed IOUs ({{ closed_count }})</summary>
+    <div class="filter-panel-body">
+      <div class="transaction-list">
+        {% for iou in closed_ious %}
+          <a href="{% url 'iou_detail' iou.pk %}" class="transaction-row transaction-row--link">
+            <div class="transaction-left">
+              <div class="transaction-icon {% if iou.direction == 'payable' %}icon-income{% else %}icon-expense{% endif %}">
+                {% if iou.direction == 'payable' %}←{% else %}→{% endif %}
+              </div>
+              <div class="transaction-info">
+                <div class="transaction-desc">{{ iou.counterparty_name }}</div>
+                <div class="transaction-meta">
+                  {% if iou.direction == 'receivable' %}
+                    Lent {{ iou.original_amount|floatformat:2 }} {{ iou.currency }}
+                  {% else %}
+                    Borrowed {{ iou.original_amount|floatformat:2 }} {{ iou.currency }}
+                  {% endif %}
+                  · {{ iou.get_status_display }}
+                  {% if iou.status == 'unpaid' %}
+                    · {% money iou.remaining_amount iou.currency %} missing
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            <div class="transaction-right">
+              <span class="badge {% if iou.status == 'paid' %}badge-muted{% endif %}">{{ iou.get_status_display }}</span>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </details>
+</section>
+{% endif %}
 {% endblock %}

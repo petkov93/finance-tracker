@@ -9,13 +9,16 @@ from financetracker.services.currency import RateResult
 from financetracker.services.iou import (
     BORROWING_CATEGORY_NAME,
     LENDING_CATEGORY_NAME,
+    close_unpaid,
     compute_open_iou_adjustment,
     create_payable,
     create_receivable,
     ensure_borrowing_category,
     ensure_lending_category,
     record_repayment,
+    reopen_unpaid,
     upcoming_iou_alerts,
+    update_iou_metadata,
 )
 from financetracker.tests.factories import create_iou, create_transaction, create_user
 
@@ -340,6 +343,169 @@ class IouServiceTests(TestCase):
 
         with self.assertRaises(ValueError):
             record_repayment(iou, amount=Decimal("500.01"))
+
+    def _balances(self):
+        from financetracker.services.display_conversion import convert_for_display
+
+        display = convert_for_display(
+            Transaction.objects.filter(user=self.user),
+            "CZK",
+        )
+        adjustment = compute_open_iou_adjustment(self.user, "CZK")
+        available = display.balance
+        total = available + adjustment.net_adjustment
+        return available, total
+
+    def test_close_unpaid_transitions_status_and_drops_total_to_available(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        record_repayment(iou, amount=Decimal("200.00"))
+        iou.refresh_from_db()
+
+        close_unpaid(iou)
+
+        iou.refresh_from_db()
+        self.assertEqual(iou.status, IOU.UNPAID)
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+
+        available, total = self._balances()
+        self.assertEqual(available, Decimal("700.00"))
+        self.assertEqual(total, Decimal("700.00"))
+
+    def test_reopen_unpaid_restores_total(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        record_repayment(iou, amount=Decimal("200.00"))
+        close_unpaid(iou)
+
+        reopen_unpaid(iou)
+
+        iou.refresh_from_db()
+        self.assertEqual(iou.status, IOU.ACTIVE)
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+
+        available, total = self._balances()
+        self.assertEqual(available, Decimal("700.00"))
+        self.assertEqual(total, Decimal("1000.00"))
+
+    def test_close_unpaid_reopen_repay_to_paid_canonical_flow(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        available, total = self._balances()
+        self.assertEqual(available, Decimal("500.00"))
+        self.assertEqual(total, Decimal("1000.00"))
+
+        record_repayment(iou, amount=Decimal("200.00"))
+        iou.refresh_from_db()
+        available, total = self._balances()
+        self.assertEqual(available, Decimal("700.00"))
+        self.assertEqual(total, Decimal("1000.00"))
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+
+        close_unpaid(iou)
+        iou.refresh_from_db()
+        available, total = self._balances()
+        self.assertEqual(iou.status, IOU.UNPAID)
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+        self.assertEqual(available, Decimal("700.00"))
+        self.assertEqual(total, Decimal("700.00"))
+
+        reopen_unpaid(iou)
+        record_repayment(iou, amount=Decimal("300.00"))
+
+        iou.refresh_from_db()
+        available, total = self._balances()
+        self.assertEqual(iou.status, IOU.PAID)
+        self.assertEqual(iou.remaining_amount, Decimal("0"))
+        self.assertEqual(available, Decimal("1000.00"))
+        self.assertEqual(total, Decimal("1000.00"))
+
+    def test_close_unpaid_only_allowed_on_active_iou(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        record_repayment(iou, amount=Decimal("500.00"))
+
+        with self.assertRaises(ValueError):
+            close_unpaid(iou)
+
+    def test_reopen_unpaid_only_allowed_on_unpaid_iou(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        record_repayment(iou, amount=Decimal("500.00"))
+
+        with self.assertRaises(ValueError):
+            reopen_unpaid(iou)
+
+    def test_update_iou_metadata_on_active_iou(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+            due_date=date(2026, 8, 1),
+        )
+
+        updated = update_iou_metadata(
+            iou,
+            counterparty_name="James",
+            due_date=date(2026, 9, 15),
+        )
+
+        self.assertEqual(updated.counterparty_name, "James")
+        self.assertEqual(updated.due_date, date(2026, 9, 15))
+        opening = iou.opening_transaction
+        self.assertIn("Jamie", opening.description)
+
+    def test_update_iou_metadata_rejected_on_closed_iou(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        close_unpaid(iou)
+
+        with self.assertRaises(ValueError):
+            update_iou_metadata(iou, counterparty_name="James")
 
     def test_borrow_increases_available_but_reduces_total(self):
         create_transaction(

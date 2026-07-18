@@ -261,6 +261,20 @@ class RepayForm(forms.Form):
         return amount
 
 
+class IOUMetadataForm(forms.Form):
+    counterparty_name = forms.CharField(
+        max_length=255,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "Name or nickname"},
+        ),
+    )
+    due_date = forms.DateField(
+        required=False,
+        label="Due date",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+
+
 class CurrencyConverterForm(forms.Form):
     amount = forms.DecimalField(
         required=False,
