@@ -28,6 +28,7 @@ from .forms import (
     DefaultCurrencyForm,
     InvestmentEntryForm,
     LendForm,
+    BorrowForm,
     ProfileForm,
     RegistrationForm,
     TransactionForm,
@@ -45,7 +46,7 @@ from .services.currency import (
     get_supported_currencies,
 )
 from .services.display_conversion import convert_for_display
-from .services.iou import compute_open_iou_adjustment, create_receivable
+from .services.iou import compute_open_iou_adjustment, create_payable, create_receivable
 from .services.statistics_aggregation import aggregate_for_statistics
 
 
@@ -447,9 +448,16 @@ def ious(request):
         direction=IOU.RECEIVABLE,
         status=IOU.ACTIVE,
     )
+    payables = IOU.objects.filter(
+        user=request.user,
+        direction=IOU.PAYABLE,
+        status=IOU.ACTIVE,
+    )
     return render(request, "financetracker/ious.html", {
         "receivables": receivables,
         "receivable_count": receivables.count(),
+        "payables": payables,
+        "payable_count": payables.count(),
     })
 
 
@@ -501,6 +509,59 @@ def add_lend(request):
     return render(request, "financetracker/add_lend.html", {
         "form": form,
         "title": "Lend money",
+    })
+
+
+@login_required
+def add_borrow(request):
+    currency_context = _transaction_currency_context(request)
+    if currency_context is None:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/add_lend.html",
+            {
+                "form": None,
+                "currency_error": True,
+                "title": "Borrow money",
+                "submit_label": "Record borrow",
+            },
+            status=200,
+        )
+
+    if request.method == "POST":
+        form = BorrowForm(
+            request.POST,
+            currency_choices=currency_context["currency_choices"],
+        )
+        if form.is_valid():
+            create_payable(
+                request.user,
+                counterparty_name=form.cleaned_data["counterparty_name"],
+                amount=form.cleaned_data["amount"],
+                currency=form.cleaned_data["currency"],
+                due_date=form.cleaned_data.get("due_date"),
+                transaction_date=form.cleaned_data["date"],
+            )
+            messages.success(request, "Borrowing recorded successfully.")
+            return redirect("ious")
+    else:
+        form = BorrowForm(
+            initial={
+                "date": timezone.now().date(),
+                "currency": currency_context["default_currency"],
+            },
+            currency_choices=currency_context["currency_choices"],
+            default_currency=currency_context["default_currency"],
+        )
+
+    return render(request, "financetracker/add_lend.html", {
+        "form": form,
+        "title": "Borrow money",
+        "submit_label": "Record borrow",
     })
 
 

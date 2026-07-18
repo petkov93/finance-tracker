@@ -48,7 +48,7 @@
 
     <div class="form-actions">
       <a href="{% url 'ious' %}" class="btn btn-ghost">Cancel</a>
-      <button type="submit" class="btn btn-primary">Record loan</button>
+      <button type="submit" class="btn btn-primary">{{ submit_label|default:"Record loan" }}</button>
     </div>
   </form>
 </div>

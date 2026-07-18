@@ -220,6 +220,16 @@ class LendForm(forms.Form):
         return normalized
 
 
+class BorrowForm(LendForm):
+    counterparty_name = forms.CharField(
+        max_length=255,
+        label="Who did you borrow from?",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "Name or nickname"},
+        ),
+    )
+
+
 class CurrencyConverterForm(forms.Form):
     amount = forms.DecimalField(
         required=False,

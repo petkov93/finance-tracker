@@ -66,11 +66,12 @@ def create_iou(
     opening_transaction=None,
 ):
     if opening_transaction is None:
+        tx_type = Transaction.INCOME if direction == IOU.PAYABLE else Transaction.EXPENSE
         opening_transaction = create_transaction(
             user,
             amount=amount,
             currency=currency,
-            type=Transaction.EXPENSE,
+            type=tx_type,
         )
     return IOU.objects.create(
         user=user,
