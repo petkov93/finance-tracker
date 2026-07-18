@@ -29,6 +29,7 @@ from .forms import (
     InvestmentEntryForm,
     LendForm,
     BorrowForm,
+    RepayForm,
     ProfileForm,
     RegistrationForm,
     TransactionForm,
@@ -46,7 +47,12 @@ from .services.currency import (
     get_supported_currencies,
 )
 from .services.display_conversion import convert_for_display
-from .services.iou import compute_open_iou_adjustment, create_payable, create_receivable
+from .services.iou import (
+    compute_open_iou_adjustment,
+    create_payable,
+    create_receivable,
+    record_repayment,
+)
 from .services.statistics_aggregation import aggregate_for_statistics
 
 
@@ -562,6 +568,48 @@ def add_borrow(request):
         "form": form,
         "title": "Borrow money",
         "submit_label": "Record borrow",
+    })
+
+
+@login_required
+def iou_detail(request, pk):
+    iou = get_object_or_404(IOU, pk=pk, user=request.user)
+    repayments = iou.repayments.select_related("transaction").order_by(
+        "-transaction__date",
+        "-created_at",
+    )
+
+    if request.method == "POST":
+        if iou.status != IOU.ACTIVE:
+            messages.error(request, "This IOU is closed and cannot accept repayments.")
+            return redirect("iou_detail", pk=pk)
+
+        form = RepayForm(
+            request.POST,
+            max_amount=iou.remaining_amount,
+            currency=iou.currency,
+        )
+        if form.is_valid():
+            record_repayment(
+                iou,
+                amount=form.cleaned_data["amount"],
+                transaction_date=form.cleaned_data["date"],
+            )
+            messages.success(request, "Repayment recorded successfully.")
+            return redirect("iou_detail", pk=pk)
+    elif iou.status == IOU.ACTIVE:
+        form = RepayForm(
+            initial={"date": timezone.now().date()},
+            max_amount=iou.remaining_amount,
+            currency=iou.currency,
+        )
+    else:
+        form = None
+
+    return render(request, "financetracker/iou_detail.html", {
+        "iou": iou,
+        "repayments": repayments,
+        "repay_form": form,
     })
 
 

@@ -23,7 +23,7 @@
   {% if receivables %}
     <div class="transaction-list">
       {% for iou in receivables %}
-        <div class="transaction-row">
+        <a href="{% url 'iou_detail' iou.pk %}" class="transaction-row transaction-row--link">
           <div class="transaction-left">
             <div class="transaction-icon icon-expense">→</div>
             <div class="transaction-info">
@@ -42,7 +42,7 @@
             </div>
             <div class="transaction-meta">remaining</div>
           </div>
-        </div>
+        </a>
       {% endfor %}
     </div>
   {% else %}
@@ -68,7 +68,7 @@
   {% if payables %}
     <div class="transaction-list">
       {% for iou in payables %}
-        <div class="transaction-row">
+        <a href="{% url 'iou_detail' iou.pk %}" class="transaction-row transaction-row--link">
           <div class="transaction-left">
             <div class="transaction-icon icon-income">←</div>
             <div class="transaction-info">
@@ -87,7 +87,7 @@
             </div>
             <div class="transaction-meta">remaining</div>
           </div>
-        </div>
+        </a>
       {% endfor %}
     </div>
   {% else %}

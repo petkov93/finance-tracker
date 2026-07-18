@@ -163,6 +163,23 @@ class IOU(models.Model):
         )
 
 
+class IOURepayment(models.Model):
+    iou = models.ForeignKey(IOU, on_delete=models.CASCADE, related_name="repayments")
+    transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.PROTECT,
+        related_name="iou_repayment",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Repayment of {self.amount} {self.iou.currency} on IOU #{self.iou_id}"
+
+
 class InvestmentEntry(models.Model):
     INVESTED = "invested"
     PROFIT = "profit"
