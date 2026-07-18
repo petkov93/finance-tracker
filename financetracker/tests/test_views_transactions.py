@@ -165,6 +165,30 @@ class TransactionViewsTests(TestCase):
         self.assertContains(response, "10.00 EUR")
         self.assertContains(response, "transaction-amount-footnote")
 
+    def test_dashboard_formats_amounts_for_accept_language(self):
+        past = date.today() - timedelta(days=7)
+        UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        create_transaction(
+            self.user,
+            amount=Decimal("10.00"),
+            currency="EUR",
+            type=Transaction.INCOME,
+            transaction_date=past,
+        )
+
+        with patch(
+            "financetracker.services.display_conversion.get_rates",
+            side_effect=_constant_get_rates(Decimal("25.00")),
+        ):
+            response = self.client.get(
+                reverse("dashboard"),
+                HTTP_ACCEPT_LANGUAGE="cs-CZ,cs;q=0.9",
+            )
+
+        self.assertEqual(response.context["display_locale"], "cs")
+        self.assertContains(response, "250,00 CZK")
+        self.assertContains(response, "10,00 EUR")
+
     def test_dashboard_single_amount_display_for_same_currency(self):
         create_transaction(self.user, amount=Decimal("100.00"), currency="CZK")
 

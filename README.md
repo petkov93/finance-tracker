@@ -40,6 +40,7 @@ Full dashboard capture (also used on the landing hero):
 - Overview of **balance**, total income, and total expenses (all time), summed in your default currency
 - Recent transactions with edit/delete
 - When a transaction's Transaction currency differs from your Default currency, the converted amount is shown prominently with the original as a footnote
+- Amounts use locale-aware number formatting from the browser `Accept-Language` header
 
 ### Transactions
 - Add **income** or **expense** entries in any [Frankfurter-supported](https://frankfurter.dev) currency
@@ -52,16 +53,19 @@ Full dashboard capture (also used on the landing hero):
 - **Monthly bar chart** with configurable date range
 - **Pie charts** for expenses and income by category — all totals in your default currency
 - Chart colors follow the active appearance (Warm / Night), including live System OS changes
+- Summary cards and chart labels share the same locale-aware money formatter as the dashboard
 
 ### Investments
 - Separate view for **invested** vs **profit** amounts (**CZK only** — no currency picker or conversion)
 - Portfolio value (**profit − invested**) — net gain or loss relative to capital put in
 - Same list/edit/delete flow as transactions
+- Amounts use the same locale-aware money formatting as other pages
 
 ### Currency converter
 - Standalone calculator at `/converter/` using **latest** exchange rates only
 - Default pair CZK → EUR; your last-used pair is remembered in the session
 - Independent of your profile default currency and transaction display logic
+- Rate line and converted result use the shared locale-aware money formatter
 
 ### Accounts
 - Register with a required **default currency** (pre-selected from browser locale when it maps confidently to a supported code)
@@ -107,14 +111,19 @@ finance-tracker/
 │   ├── static/financetracker/
 │   │   ├── css/style.css         # Warm / Night design tokens
 │   │   ├── img/landing/          # Served landing screenshots
-│   │   └── js/theme.js           # Live System preference + themechange events
+│   │   └── js/
+│   │       ├── theme.js          # Live System preference + themechange events
+│   │       └── money.js          # Locale-aware amount formatting for charts/converter
+│   ├── templatetags/
+│   │   └── money.py              # {% money %} / {% money_amount %} tags
 │   ├── templates/financetracker/
 │   ├── models.py           # Category, Transaction, InvestmentEntry, UserProfile, ExchangeRate
-│   ├── context_processors.py     # theme_preference for templates
+│   ├── context_processors.py     # theme_preference + display_locale for templates
 │   ├── middleware.py             # Sync ft_theme cookie from profile
 │   ├── services/
 │   │   ├── currency.py                 # Frankfurter rates, DB persistence, sync, convert
 │   │   ├── display_conversion.py       # Batch display conversion for dashboard/statistics
+│   │   ├── money_format.py             # Accept-Language locale + amount formatting
 │   │   └── statistics_aggregation.py   # Month/category series for charts
 │   ├── views.py
 │   ├── forms.py
@@ -236,6 +245,14 @@ Dashboard and statistics do **not** sum raw `amount` values across mixed currenc
 - **Different currency**: primary amount in default currency; secondary footnote shows the original native amount.
 - **Degraded mode**: if no usable exchange rate exists at all (no stored snapshot and Frankfurter unreachable), converted totals are omitted, rows show native amounts, and a warning banner is shown.
 - **Stale rates**: when today's live sync failed but an earlier stored snapshot exists, totals and charts still render using those rates and an info banner shows the snapshot date.
+
+### Money formatting
+
+Displayed amounts (dashboard, statistics, investments, converter) use a shared locale-aware formatter so grouping and decimal separators follow the browser language:
+
+- **Server-rendered amounts** resolve locale from the request `Accept-Language` header (`display_locale` context processor + `{% money %}` / `{% money_amount %}` tags).
+- **Client-side charts and converter JS** use the same `display_locale` via `FinanceTrackerMoney` in `money.js`, so SSR totals and chart ticks stay consistent on a page.
+- Format is a localized number plus an ISO currency code (for example `1 234,56 CZK` or `1,234.56 EUR`).
 
 ### Exchange-rate policy
 

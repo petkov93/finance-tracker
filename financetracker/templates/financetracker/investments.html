@@ -1,4 +1,5 @@
 {% extends "financetracker/base.html" %}
+{% load money %}
 {% block title %}Investments — Finance Tracker{% endblock %}
 
 {% block content %}
@@ -13,18 +14,18 @@
 <div class="hero-stats animate-in animate-in-delay-1">
   <div class="hero-balance {% if portfolio_value >= 0 %}positive{% else %}negative{% endif %}">
     <span class="summary-label">Portfolio value</span>
-    <span class="hero-amount">{{ portfolio_value|floatformat:2 }} <small>CZK</small></span>
+    <span class="hero-amount">{% money_amount portfolio_value %} <small>CZK</small></span>
     <span class="summary-sub">profit − invested</span>
   </div>
   <div class="hero-secondary">
     <div class="stat-pill invested">
       <span class="summary-label">Invested</span>
-      <span class="stat-pill-value">{{ total_invested|floatformat:2 }}</span>
+      <span class="stat-pill-value">{% money_amount total_invested %}</span>
       <span class="summary-sub">{{ invested_count }} entries</span>
     </div>
     <div class="stat-pill income">
       <span class="summary-label">Profit</span>
-      <span class="stat-pill-value">{{ total_profit|floatformat:2 }}</span>
+      <span class="stat-pill-value">{% money_amount total_profit %}</span>
       <span class="summary-sub">{{ profit_count }} entries</span>
     </div>
   </div>
@@ -54,7 +55,7 @@
           </div>
           <div class="transaction-right">
             <div class="transaction-amount {% if e.type == 'profit' %}amount-income{% else %}amount-invested{% endif %}">
-              {% if e.type == 'profit' %}+{% endif %}{{ e.amount|floatformat:2 }} CZK
+              {% if e.type == 'profit' %}+{% endif %}{% money e.amount "CZK" %}
             </div>
             <div class="transaction-actions">
               <a href="{% url 'edit_investment' e.pk %}" class="action-link edit">Edit</a>

@@ -66,6 +66,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "financetracker.context_processors.theme_preference",
+                "financetracker.context_processors.display_locale",
             ],
         },
     },

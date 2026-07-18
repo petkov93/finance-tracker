@@ -1,5 +1,5 @@
 {% extends "financetracker/base.html" %}
-{% load static %}
+{% load static money %}
 {% block title %}Currency Converter — Finance Tracker{% endblock %}
 
 {% block content %}
@@ -18,7 +18,7 @@
   </div>
   {% endif %}
   <p class="converter-rate" id="converter-rate-line"{% if rate_error %} hidden{% endif %}>
-    1 {{ from_currency }} = {{ rate|floatformat:4 }} {{ to_currency }}
+    1 {{ from_currency }} = {% if rate is not None %}{% money_amount rate 4 %}{% endif %} {{ to_currency }}
   </p>
   <p class="form-error converter-rate-error" id="converter-rate-error" role="alert"{% if not rate_error %} hidden{% endif %}>
     Couldn't fetch the exchange rate right now. Try again in a moment.
