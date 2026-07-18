@@ -243,11 +243,16 @@ class StatisticsViewsTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
         self.assertContains(response, "financetracker/js/money.js")
         self.assertContains(response, 'FINANCE_TRACKER_DISPLAY_LOCALE = "cs"')
         self.assertContains(response, "FinanceTrackerMoney")
         self.assertContains(response, "money.formatMoney")
         self.assertNotContains(response, 'toLocaleString("cs-CZ")')
+        # money.js must load in <head> before the inline chart script in content.
+        money_js_at = content.index("financetracker/js/money.js")
+        chart_script_at = content.index("money.formatMoney")
+        self.assertLess(money_js_at, chart_script_at)
 
     def test_statistics_formats_totals_for_accept_language(self):
         UserProfile.objects.filter(user=self.user).update(default_currency="CZK")

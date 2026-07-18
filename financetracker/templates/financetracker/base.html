@@ -32,6 +32,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    window.FINANCE_TRACKER_DISPLAY_LOCALE = "{{ display_locale|escapejs }}";
+  </script>
+  <script src="{% static 'financetracker/js/money.js' %}"></script>
   <link rel="stylesheet" href="{% static 'financetracker/css/style.css' %}" />
 </head>
 <body class="{% if user.is_authenticated %}app-authenticated{% else %}app-guest{% endif %}{% block body_class %}{% endblock %}">
@@ -112,10 +116,6 @@
     </footer>
   </div>
   <script src="{% static 'financetracker/js/theme.js' %}"></script>
-  <script>
-    window.FINANCE_TRACKER_DISPLAY_LOCALE = "{{ display_locale|escapejs }}";
-  </script>
-  <script src="{% static 'financetracker/js/money.js' %}"></script>
   {% if user.is_authenticated %}
   <script src="{% static 'financetracker/js/nav.js' %}"></script>
   {% endif %}
