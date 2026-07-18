@@ -25,6 +25,31 @@
   </div>
 {% endif %}
 
+{% if iou_alerts %}
+<section class="iou-alerts-strip animate-in animate-in-delay-1" aria-label="IOUs due soon">
+  <div class="iou-alerts-header">
+    <h2 class="iou-alerts-title">IOUs due soon or overdue</h2>
+    <a href="{% url 'ious' %}" class="link-muted">View all</a>
+  </div>
+  <div class="iou-alerts-list">
+    {% for iou in iou_alerts %}
+      <div class="iou-alert-item{% if iou.due_date < today %} iou-alert-item--overdue{% endif %}">
+        <div class="iou-alert-main">
+          <span class="iou-alert-counterparty">{{ iou.counterparty_name }}</span>
+          <span class="iou-alert-meta">
+            {% if iou.direction == "receivable" %}Lent{% else %}Borrowed{% endif %}
+            · Due {{ iou.due_date|date:"d.m.Y" }}
+          </span>
+        </div>
+        <div class="iou-alert-amount">
+          {% money iou.remaining_amount iou.currency %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 {% if not conversion_degraded %}
 <div class="hero-stats hero-stats--balances animate-in animate-in-delay-1">
   <div class="hero-balance {% if available >= 0 %}positive{% else %}negative{% endif %}">

@@ -309,6 +309,32 @@ body.sidebar-mobile-open .sidebar-backdrop {
 
 .sidebar-link svg { flex-shrink: 0; opacity: 0.75; }
 
+.sidebar-badge {
+  margin-left: auto;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--warning);
+  color: var(--surface);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+body.sidebar-collapsed .sidebar-badge {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  margin-left: 0;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.2rem;
+  font-size: 0.6rem;
+  line-height: 1rem;
+}
+
 .sidebar-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -460,6 +486,74 @@ body.sidebar-collapsed .sidebar-link.active::before {
 .alert.error   { border-left-color: var(--expense); }
 .alert.warning { border-left-color: var(--warning); }
 .alert.info    { border-left-color: var(--accent); }
+
+.iou-alerts-strip {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.iou-alerts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.iou-alerts-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.iou-alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.iou-alert-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.iou-alert-item--overdue {
+  border-left: 3px solid var(--warning);
+}
+
+.iou-alert-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.iou-alert-counterparty {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.iou-alert-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.iou-alert-amount {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 .transaction-amount-footnote {
   font-family: var(--font-mono);
