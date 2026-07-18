@@ -26,23 +26,28 @@
 {% endif %}
 
 {% if not conversion_degraded %}
-<div class="hero-stats animate-in animate-in-delay-1">
-  <div class="hero-balance {% if balance >= 0 %}positive{% else %}negative{% endif %}">
-    <span class="summary-label">Balance</span>
-    <span class="hero-amount">{% money_amount balance %} <small>{{ default_currency }}</small></span>
+<div class="hero-stats hero-stats--balances animate-in animate-in-delay-1">
+  <div class="hero-balance {% if available >= 0 %}positive{% else %}negative{% endif %}">
+    <span class="summary-label">Available</span>
+    <span class="hero-amount">{% money_amount available %} <small>{{ default_currency }}</small></span>
     <span class="summary-sub">income minus expenses</span>
   </div>
-  <div class="hero-secondary">
-    <div class="stat-pill income">
-      <span class="summary-label">Income</span>
-      <span class="stat-pill-value">{% money_amount total_income %}</span>
-      <span class="summary-sub">all time</span>
-    </div>
-    <div class="stat-pill expense">
-      <span class="summary-label">Expenses</span>
-      <span class="stat-pill-value">{% money_amount total_expense %}</span>
-      <span class="summary-sub">all time</span>
-    </div>
+  <div class="hero-balance {% if total >= 0 %}positive{% else %}negative{% endif %}">
+    <span class="summary-label">Total</span>
+    <span class="hero-amount">{% money_amount total %} <small>{{ default_currency }}</small></span>
+    <span class="summary-sub">includes money owed to you</span>
+  </div>
+</div>
+<div class="dashboard-totals animate-in animate-in-delay-1">
+  <div class="stat-pill income">
+    <span class="summary-label">Income</span>
+    <span class="stat-pill-value">{% money_amount total_income %}</span>
+    <span class="summary-sub">all time</span>
+  </div>
+  <div class="stat-pill expense">
+    <span class="summary-label">Expenses</span>
+    <span class="stat-pill-value">{% money_amount total_expense %}</span>
+    <span class="summary-sub">all time</span>
   </div>
 </div>
 {% endif %}

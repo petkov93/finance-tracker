@@ -15,6 +15,7 @@ DEFAULTS = [
     ("expense", "Entertainment", "🎬"),
     ("expense", "Utilities", "💡"),
     ("expense", "Clothes", "👕"),
+    ("expense", "Lending", "🤝"),
 ]
 
 

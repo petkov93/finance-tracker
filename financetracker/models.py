@@ -119,6 +119,50 @@ class Transaction(models.Model):
         return f"{self.get_type_display()} — {self.amount} {self.currency} on {self.date}"
 
 
+class IOU(models.Model):
+    RECEIVABLE = "receivable"
+    PAYABLE = "payable"
+    DIRECTION_CHOICES = [
+        (RECEIVABLE, "Receivable"),
+        (PAYABLE, "Payable"),
+    ]
+
+    ACTIVE = "active"
+    PAID = "paid"
+    UNPAID = "unpaid"
+    STATUS_CHOICES = [
+        (ACTIVE, "Active"),
+        (PAID, "Paid"),
+        (UNPAID, "Unpaid"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="ious")
+    direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
+    counterparty_name = models.CharField(max_length=255)
+    original_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=3, default=DEFAULT_PROFILE_CURRENCY)
+    due_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=ACTIVE)
+    opening_transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.PROTECT,
+        related_name="opening_iou",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "IOU"
+
+    def __str__(self):
+        return (
+            f"{self.get_direction_display()} — {self.remaining_amount} "
+            f"{self.currency} from {self.counterparty_name}"
+        )
+
+
 class InvestmentEntry(models.Model):
     INVESTED = "invested"
     PROFIT = "profit"

@@ -16,6 +16,7 @@ from .models import (
     Transaction,
     Category,
     InvestmentEntry,
+    IOU,
     UserProfile,
     ensure_user_profile,
 )
@@ -26,6 +27,7 @@ from .forms import (
     CustomPasswordChangeForm,
     DefaultCurrencyForm,
     InvestmentEntryForm,
+    LendForm,
     ProfileForm,
     RegistrationForm,
     TransactionForm,
@@ -43,6 +45,7 @@ from .services.currency import (
     get_supported_currencies,
 )
 from .services.display_conversion import convert_for_display
+from .services.iou import compute_open_iou_adjustment, create_receivable
 from .services.statistics_aggregation import aggregate_for_statistics
 
 
@@ -141,6 +144,21 @@ def dashboard(request):
         totals_transactions=all_transactions,
     )
 
+    conversion_degraded = display.conversion_degraded
+    available = None
+    total = None
+
+    if not conversion_degraded:
+        iou_adjustment = compute_open_iou_adjustment(
+            request.user,
+            profile.default_currency,
+        )
+        if iou_adjustment.conversion_degraded:
+            conversion_degraded = True
+        else:
+            available = display.balance
+            total = available + iou_adjustment.net_adjustment
+
     return render(request, "financetracker/dashboard.html", {
         "display_transactions": display.rows,
         "all_categories": all_categories,
@@ -148,9 +166,10 @@ def dashboard(request):
         "q_query": q_query,
         "total_income": display.total_income,
         "total_expense": display.total_expense,
-        "balance": display.balance,
+        "available": available,
+        "total": total,
         "default_currency": display.default_currency,
-        "conversion_degraded": display.conversion_degraded,
+        "conversion_degraded": conversion_degraded,
         "rates_stale_date": display.rates_stale_date,
     })
 
@@ -419,6 +438,70 @@ def delete_investment(request, pk):
     entry.delete()
     messages.success(request, "Investment entry deleted.")
     return redirect("investments")
+
+
+@login_required
+def ious(request):
+    receivables = IOU.objects.filter(
+        user=request.user,
+        direction=IOU.RECEIVABLE,
+        status=IOU.ACTIVE,
+    )
+    return render(request, "financetracker/ious.html", {
+        "receivables": receivables,
+        "receivable_count": receivables.count(),
+    })
+
+
+@login_required
+def add_lend(request):
+    currency_context = _transaction_currency_context(request)
+    if currency_context is None:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/add_lend.html",
+            {
+                "form": None,
+                "currency_error": True,
+                "title": "Lend money",
+            },
+            status=200,
+        )
+
+    if request.method == "POST":
+        form = LendForm(
+            request.POST,
+            currency_choices=currency_context["currency_choices"],
+        )
+        if form.is_valid():
+            create_receivable(
+                request.user,
+                counterparty_name=form.cleaned_data["counterparty_name"],
+                amount=form.cleaned_data["amount"],
+                currency=form.cleaned_data["currency"],
+                due_date=form.cleaned_data.get("due_date"),
+                transaction_date=form.cleaned_data["date"],
+            )
+            messages.success(request, "Loan recorded successfully.")
+            return redirect("ious")
+    else:
+        form = LendForm(
+            initial={
+                "date": timezone.now().date(),
+                "currency": currency_context["default_currency"],
+            },
+            currency_choices=currency_context["currency_choices"],
+            default_currency=currency_context["default_currency"],
+        )
+
+    return render(request, "financetracker/add_lend.html", {
+        "form": form,
+        "title": "Lend money",
+    })
 
 
 @login_required
