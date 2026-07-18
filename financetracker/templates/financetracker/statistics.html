@@ -183,6 +183,11 @@
         maintainAspectRatio: false,
         plugins: {
           legend: { labels: { color: colors.legend, font: { family: FONT_UI, size: 12 } } },
+          tooltip: {
+            callbacks: {
+              label: (c) => " " + money.formatMoney(c.parsed.y, defaultCurrency),
+            },
+          },
         },
         scales: {
           x: { ticks: { color: colors.tick, font: { family: FONT_UI } }, grid: { color: colors.grid } },
@@ -190,7 +195,7 @@
             ticks: {
               color: colors.tick,
               font: { family: FONT_MONO, size: 11 },
-              callback: (v) => money.formatMoney(v, defaultCurrency, 0),
+              callback: (v) => money.formatMoney(v, defaultCurrency),
             },
             grid: { color: colors.grid },
             beginAtZero: true,

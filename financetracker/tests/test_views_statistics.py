@@ -249,6 +249,7 @@ class StatisticsViewsTests(TestCase):
         self.assertContains(response, "FinanceTrackerMoney")
         self.assertContains(response, "money.formatMoney")
         self.assertNotContains(response, 'toLocaleString("cs-CZ")')
+        self.assertNotContains(response, "formatMoney(v, defaultCurrency, 0)")
         # money.js must load in <head> before the inline chart script in content.
         money_js_at = content.index("financetracker/js/money.js")
         chart_script_at = content.index("money.formatMoney")
