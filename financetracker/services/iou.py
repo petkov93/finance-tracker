@@ -16,6 +16,63 @@ BORROWING_CATEGORY_ICON = "💸"
 IOU_ALERT_WINDOW_DAYS = 7
 
 
+class TransactionIouGuardError(Exception):
+    """Raised when a ledger action would break IOU invariants."""
+
+
+def _opening_iou_for(transaction: Transaction) -> IOU | None:
+    try:
+        return transaction.opening_iou
+    except IOU.DoesNotExist:
+        return None
+
+
+def _repayment_for(transaction: Transaction) -> IOURepayment | None:
+    try:
+        return transaction.iou_repayment
+    except IOURepayment.DoesNotExist:
+        return None
+
+
+def guard_opening_transaction_amount_currency(
+    transaction: Transaction,
+    *,
+    amount: Decimal,
+    currency: str,
+) -> None:
+    iou = _opening_iou_for(transaction)
+    if iou is None or iou.status != IOU.ACTIVE:
+        return
+    stored = Transaction.objects.only("amount", "currency").get(pk=transaction.pk)
+    if amount != stored.amount or currency != stored.currency:
+        raise TransactionIouGuardError(
+            "Cannot change amount or currency on an IOU opening transaction "
+            "while the IOU is active."
+        )
+
+
+def delete_transaction_with_iou_effects(tx: Transaction) -> None:
+    repayment = _repayment_for(tx)
+    if repayment is not None:
+        with transaction.atomic():
+            iou = repayment.iou
+            iou.remaining_amount += repayment.amount
+            if iou.status == IOU.PAID and iou.remaining_amount > 0:
+                iou.status = IOU.ACTIVE
+            iou.save(update_fields=["remaining_amount", "status", "updated_at"])
+            repayment.delete()
+            tx.delete()
+        return
+
+    iou = _opening_iou_for(tx)
+    if iou is not None and iou.status == IOU.ACTIVE:
+        raise TransactionIouGuardError(
+            "Cannot delete the opening transaction while the IOU is active."
+        )
+
+    tx.delete()
+
+
 @dataclass(frozen=True)
 class OpenIouAdjustmentResult:
     receivable_total: Decimal

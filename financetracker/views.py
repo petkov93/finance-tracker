@@ -49,10 +49,13 @@ from .services.currency import (
 )
 from .services.display_conversion import convert_for_display
 from .services.iou import (
+    TransactionIouGuardError,
     close_unpaid,
     compute_open_iou_adjustment,
     create_payable,
     create_receivable,
+    delete_transaction_with_iou_effects,
+    guard_opening_transaction_amount_currency,
     record_repayment,
     reopen_unpaid,
     update_iou_metadata,
@@ -275,9 +278,18 @@ def edit_transaction(request, pk):
             currency_choices=currency_context["currency_choices"],
         )
         if form.is_valid():
-            form.save()
-            messages.success(request, "Transaction updated.")
-            return redirect("dashboard")
+            try:
+                guard_opening_transaction_amount_currency(
+                    transaction,
+                    amount=form.cleaned_data["amount"],
+                    currency=form.cleaned_data["currency"],
+                )
+            except TransactionIouGuardError as exc:
+                form.add_error(None, str(exc))
+            else:
+                form.save()
+                messages.success(request, "Transaction updated.")
+                return redirect("dashboard")
     else:
         form = TransactionForm(
             instance=transaction,
@@ -295,7 +307,11 @@ def edit_transaction(request, pk):
 @require_POST
 def delete_transaction(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
-    transaction.delete()
+    try:
+        delete_transaction_with_iou_effects(transaction)
+    except TransactionIouGuardError as exc:
+        messages.error(request, str(exc))
+        return redirect("dashboard")
     messages.success(request, "Transaction deleted.")
     return redirect("dashboard")
 
