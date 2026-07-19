@@ -676,11 +676,15 @@ def iou_detail(request, pk):
                 currency=iou.currency,
             )
             if repay_form.is_valid():
-                update_repayment(
-                    repayment,
-                    amount=repay_form.cleaned_data["amount"],
-                    transaction_date=repay_form.cleaned_data["date"],
-                )
+                try:
+                    update_repayment(
+                        repayment,
+                        amount=repay_form.cleaned_data["amount"],
+                        transaction_date=repay_form.cleaned_data["date"],
+                    )
+                except ValueError as exc:
+                    messages.error(request, str(exc))
+                    return redirect("iou_detail", pk=pk)
                 messages.success(request, "Repayment updated.")
                 return redirect("iou_detail", pk=pk)
         elif action == "delete_repayment":
@@ -707,11 +711,15 @@ def iou_detail(request, pk):
                 currency=iou.currency,
             )
             if repay_form.is_valid():
-                record_repayment(
-                    iou,
-                    amount=repay_form.cleaned_data["amount"],
-                    transaction_date=repay_form.cleaned_data["date"],
-                )
+                try:
+                    record_repayment(
+                        iou,
+                        amount=repay_form.cleaned_data["amount"],
+                        transaction_date=repay_form.cleaned_data["date"],
+                    )
+                except ValueError as exc:
+                    messages.error(request, str(exc))
+                    return redirect("iou_detail", pk=pk)
                 messages.success(request, "Repayment recorded successfully.")
                 return redirect("iou_detail", pk=pk)
     else:

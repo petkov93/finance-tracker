@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.contrib.messages import get_messages
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -366,6 +367,30 @@ class IouViewsTests(TestCase):
         self.assertEqual(iou.remaining_amount, Decimal("500.00"))
         self.assertEqual(iou.repayments.count(), 0)
 
+    @patch(
+        "financetracker.views.record_repayment",
+        side_effect=ValueError("Repayment amount cannot exceed remaining amount."),
+    )
+    def test_repay_surfaces_service_rejection_instead_of_500(self, _mock_record):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "repay", "amount": "200.00", "date": "2026-07-10"},
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        messages = [m.message for m in get_messages(response.wsgi_request)]
+        self.assertIn("Repayment amount cannot exceed remaining amount.", messages)
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("500.00"))
+        self.assertEqual(iou.repayments.count(), 0)
+
     def test_close_unpaid_from_detail_updates_status_and_dashboard_total(self):
         create_transaction(
             self.user,
@@ -607,6 +632,41 @@ class IouPolishViewTests(TestCase):
         self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
         iou.refresh_from_db()
         self.assertEqual(iou.remaining_amount, Decimal("3.00"))
+
+    @patch(
+        "financetracker.views.update_repayment",
+        side_effect=ValueError("Repayment amount cannot exceed remaining amount."),
+    )
+    def test_edit_repayment_surfaces_service_rejection_instead_of_500(
+        self, _mock_update
+    ):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("5.00"),
+            currency="EUR",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "repay", "amount": "3.00", "date": "2026-07-10"},
+        )
+        repayment = iou.repayments.get()
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {
+                "action": "edit_repayment",
+                "repayment_id": repayment.pk,
+                "amount": "2.00",
+                "date": "2026-07-11",
+            },
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        messages = [m.message for m in get_messages(response.wsgi_request)]
+        self.assertIn("Repayment amount cannot exceed remaining amount.", messages)
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("2.00"))
 
     def test_delete_repayment_from_iou_detail(self):
         iou = create_receivable(
