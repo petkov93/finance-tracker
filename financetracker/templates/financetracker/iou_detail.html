@@ -182,10 +182,11 @@
           <div class="transaction-amount {% if repayment.transaction.type == 'income' %}amount-income{% else %}amount-expense{% endif %}">
             {% money repayment.transaction.amount repayment.transaction.currency %}
           </div>
-          {% if iou.status == 'active' %}
+          {% if iou.status == 'active' or iou.status == 'paid' %}
           <details class="repayment-edit-panel">
             <summary class="action-link edit">Manage</summary>
             <div class="form-card repayment-edit-form">
+              {% if iou.status == 'active' %}
               <form method="post" novalidate>
                 {% csrf_token %}
                 <input type="hidden" name="action" value="edit_repayment">
@@ -204,6 +205,7 @@
                   <button type="submit" class="btn btn-primary btn-sm">Save changes</button>
                 </div>
               </form>
+              {% endif %}
               <form method="post" onsubmit="return confirm('Delete this repayment?')">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="delete_repayment">

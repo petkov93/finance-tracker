@@ -154,6 +154,44 @@ def selectable_categories() -> QuerySet[Category]:
     )
 
 
+def _create_iou(
+    user: User,
+    *,
+    direction: str,
+    counterparty_name: str,
+    amount: Decimal,
+    currency: str,
+    due_date: date | None,
+    transaction_date: date | None,
+    category: Category,
+    tx_type: str,
+    description: str,
+) -> IOU:
+    on_date = transaction_date or timezone.now().date()
+
+    with transaction.atomic():
+        opening = Transaction.objects.create(
+            user=user,
+            type=tx_type,
+            amount=amount,
+            currency=currency,
+            category=category,
+            description=description,
+            date=on_date,
+        )
+        return IOU.objects.create(
+            user=user,
+            direction=direction,
+            counterparty_name=counterparty_name,
+            original_amount=amount,
+            remaining_amount=amount,
+            currency=currency,
+            due_date=due_date,
+            status=IOU.ACTIVE,
+            opening_transaction=opening,
+        )
+
+
 def create_receivable(
     user: User,
     *,
@@ -163,30 +201,18 @@ def create_receivable(
     due_date: date | None = None,
     transaction_date: date | None = None,
 ) -> IOU:
-    lending_category = ensure_lending_category()
-    on_date = transaction_date or timezone.now().date()
-
-    with transaction.atomic():
-        opening = Transaction.objects.create(
-            user=user,
-            type=Transaction.EXPENSE,
-            amount=amount,
-            currency=currency,
-            category=lending_category,
-            description=f"Lent to {counterparty_name}",
-            date=on_date,
-        )
-        return IOU.objects.create(
-            user=user,
-            direction=IOU.RECEIVABLE,
-            counterparty_name=counterparty_name,
-            original_amount=amount,
-            remaining_amount=amount,
-            currency=currency,
-            due_date=due_date,
-            status=IOU.ACTIVE,
-            opening_transaction=opening,
-        )
+    return _create_iou(
+        user,
+        direction=IOU.RECEIVABLE,
+        counterparty_name=counterparty_name,
+        amount=amount,
+        currency=currency,
+        due_date=due_date,
+        transaction_date=transaction_date,
+        category=ensure_lending_category(),
+        tx_type=Transaction.EXPENSE,
+        description=f"Lent to {counterparty_name}",
+    )
 
 
 def create_payable(
@@ -198,30 +224,18 @@ def create_payable(
     due_date: date | None = None,
     transaction_date: date | None = None,
 ) -> IOU:
-    borrowing_category = ensure_borrowing_category()
-    on_date = transaction_date or timezone.now().date()
-
-    with transaction.atomic():
-        opening = Transaction.objects.create(
-            user=user,
-            type=Transaction.INCOME,
-            amount=amount,
-            currency=currency,
-            category=borrowing_category,
-            description=f"Borrowed from {counterparty_name}",
-            date=on_date,
-        )
-        return IOU.objects.create(
-            user=user,
-            direction=IOU.PAYABLE,
-            counterparty_name=counterparty_name,
-            original_amount=amount,
-            remaining_amount=amount,
-            currency=currency,
-            due_date=due_date,
-            status=IOU.ACTIVE,
-            opening_transaction=opening,
-        )
+    return _create_iou(
+        user,
+        direction=IOU.PAYABLE,
+        counterparty_name=counterparty_name,
+        amount=amount,
+        currency=currency,
+        due_date=due_date,
+        transaction_date=transaction_date,
+        category=ensure_borrowing_category(),
+        tx_type=Transaction.INCOME,
+        description=f"Borrowed from {counterparty_name}",
+    )
 
 
 def record_repayment(
@@ -359,6 +373,10 @@ def compute_open_iou_adjustment(
     user: User,
     default_currency: str,
 ) -> OpenIouAdjustmentResult:
+    """Sum open receivable/payable remaining amounts in the default currency.
+
+    Cross-currency open IOUs use today's latest rate (v1 policy).
+    """
     active_ious = IOU.objects.filter(user=user, status=IOU.ACTIVE)
 
     rate_keys: set[tuple[str, str, date]] = set()

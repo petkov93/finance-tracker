@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-header animate-in">
   <div>
-    <p class="page-eyebrow">Loans</p>
+    <p class="page-eyebrow">Lend &amp; borrow</p>
     <h1 class="page-title">IOUs</h1>
   </div>
   <div class="page-actions">
@@ -54,7 +54,7 @@
       </svg>
       <p class="empty-title">No open receivables</p>
       <p class="empty-sub">Record money you lent to track who owes you and when it is due.</p>
-      <a href="{% url 'add_lend' %}" class="btn btn-primary">Record a loan</a>
+      <a href="{% url 'add_lend' %}" class="btn btn-primary">Lend money</a>
     </div>
   {% endif %}
 </section>
@@ -107,7 +107,7 @@
 {% if closed_count %}
 <section class="section animate-in animate-in-delay-3">
   <details class="filter-panel">
-    <summary class="filter-panel-toggle">Closed IOUs ({{ closed_count }})</summary>
+    <summary class="filter-panel-toggle">Closed ({{ closed_count }})</summary>
     <div class="filter-panel-body">
       <div class="transaction-list">
         {% for iou in closed_ious %}

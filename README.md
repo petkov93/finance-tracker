@@ -117,12 +117,13 @@ finance-tracker/
 │   ├── templatetags/
 │   │   └── money.py              # {% money %} / {% money_amount %} tags
 │   ├── templates/financetracker/
-│   ├── models.py           # Category, Transaction, InvestmentEntry, UserProfile, ExchangeRate
-│   ├── context_processors.py     # theme_preference + display_locale for templates
+│   ├── models.py           # Category, Transaction, InvestmentEntry, UserProfile, ExchangeRate, IOU, IOURepayment
+│   ├── context_processors.py     # theme_preference + display_locale + IOU nav badge
 │   ├── middleware.py             # Sync ft_theme cookie from profile
 │   ├── services/
 │   │   ├── currency.py                 # Frankfurter rates, DB persistence, sync, convert
 │   │   ├── display_conversion.py       # Batch display conversion for dashboard/statistics
+│   │   ├── iou.py                      # IOU create/repay/close/reopen and Total adjustment
 │   │   ├── money_format.py             # Accept-Language locale + amount formatting
 │   │   └── statistics_aggregation.py   # Month/category series for charts
 │   ├── views.py

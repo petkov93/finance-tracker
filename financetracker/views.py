@@ -522,11 +522,12 @@ def add_lend(request):
         )
         return render(
             request,
-            "financetracker/add_lend.html",
+            "financetracker/add_iou.html",
             {
                 "form": None,
                 "currency_error": True,
                 "title": "Lend money",
+                "submit_label": "Record lend",
             },
             status=200,
         )
@@ -545,7 +546,7 @@ def add_lend(request):
                 due_date=form.cleaned_data.get("due_date"),
                 transaction_date=form.cleaned_data["date"],
             )
-            messages.success(request, "Loan recorded successfully.")
+            messages.success(request, "Lending recorded successfully.")
             return redirect("ious")
     else:
         form = LendForm(
@@ -557,9 +558,10 @@ def add_lend(request):
             default_currency=currency_context["default_currency"],
         )
 
-    return render(request, "financetracker/add_lend.html", {
+    return render(request, "financetracker/add_iou.html", {
         "form": form,
         "title": "Lend money",
+        "submit_label": "Record lend",
     })
 
 
@@ -573,7 +575,7 @@ def add_borrow(request):
         )
         return render(
             request,
-            "financetracker/add_lend.html",
+            "financetracker/add_iou.html",
             {
                 "form": None,
                 "currency_error": True,
@@ -609,7 +611,7 @@ def add_borrow(request):
             default_currency=currency_context["default_currency"],
         )
 
-    return render(request, "financetracker/add_lend.html", {
+    return render(request, "financetracker/add_iou.html", {
         "form": form,
         "title": "Borrow money",
         "submit_label": "Record borrow",
@@ -688,8 +690,11 @@ def iou_detail(request, pk):
                 messages.success(request, "Repayment updated.")
                 return redirect("iou_detail", pk=pk)
         elif action == "delete_repayment":
-            if iou.status != IOU.ACTIVE:
-                messages.error(request, "Only active IOUs accept repayment changes.")
+            if iou.status not in (IOU.ACTIVE, IOU.PAID):
+                messages.error(
+                    request,
+                    "Only active or paid IOUs accept repayment deletion.",
+                )
                 return redirect("iou_detail", pk=pk)
 
             repayment = get_object_or_404(

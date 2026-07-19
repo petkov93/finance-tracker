@@ -81,7 +81,7 @@ Cash position from all-time income minus expenses, display-converted to the user
 _Avoid_: Balance, net worth, total cash
 
 **Total balance**:
-Available balance plus open receivables minus open payables, each IOU amount display-converted to the user's default currency.
+Available balance plus open receivables minus open payables, each IOU amount display-converted to the user's default currency. Open IOU amounts use the latest exchange rate (same rate source as display conversion for today's date), not the opening or due date.
 _Avoid_: Net worth, economic balance, adjusted balance
 
 **Spending and income totals**:
