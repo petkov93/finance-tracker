@@ -1,13 +1,15 @@
 THEME_WARM = "warm"
 THEME_NIGHT = "night"
+THEME_COOL = "cool"
 THEME_SYSTEM = "system"
 
 THEME_CHOICES = [
     (THEME_WARM, "Warm Ledger"),
     (THEME_NIGHT, "Night Ledger"),
+    (THEME_COOL, "Cool Ledger"),
     (THEME_SYSTEM, "System"),
 ]
 
 DEFAULT_THEME_PREFERENCE = THEME_SYSTEM
 THEME_COOKIE_NAME = "ft_theme"
-THEME_VALUES = frozenset({THEME_WARM, THEME_NIGHT, THEME_SYSTEM})
+THEME_VALUES = frozenset({THEME_WARM, THEME_NIGHT, THEME_COOL, THEME_SYSTEM})
