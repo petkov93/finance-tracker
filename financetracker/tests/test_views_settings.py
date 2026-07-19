@@ -148,7 +148,7 @@ class SettingsViewsTests(TestCase):
         self.assertEqual(profile.theme, "system")
 
     def test_theme_update_persists_and_shows_selection(self):
-        for theme in ("warm", "night", "system"):
+        for theme in ("warm", "night", "cool", "system"):
             with self.subTest(theme=theme):
                 response = self.client.post(
                     reverse("settings"),
@@ -170,15 +170,17 @@ class SettingsViewsTests(TestCase):
                 self.assertContains(response, 'aria-pressed="true"')
 
     def test_theme_update_sets_preference_cookie(self):
-        response = self.client.post(
-            reverse("settings"),
-            {
-                "action": "theme",
-                "theme": "night",
-            },
-        )
-        self.assertRedirects(response, reverse("settings"))
-        self.assertEqual(response.cookies["ft_theme"].value, "night")
+        for theme in ("night", "cool"):
+            with self.subTest(theme=theme):
+                response = self.client.post(
+                    reverse("settings"),
+                    {
+                        "action": "theme",
+                        "theme": theme,
+                    },
+                )
+                self.assertRedirects(response, reverse("settings"))
+                self.assertEqual(response.cookies["ft_theme"].value, theme)
 
     def test_invalid_theme_does_not_change_preference(self):
         profile = UserProfile.objects.get(user=self.user)

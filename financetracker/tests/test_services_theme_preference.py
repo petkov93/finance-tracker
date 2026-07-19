@@ -7,6 +7,7 @@ from financetracker.models import UserProfile, ensure_user_profile
 from financetracker.services.theme_constants import (
     DEFAULT_THEME_PREFERENCE,
     THEME_COOKIE_NAME,
+    THEME_COOL,
     THEME_NIGHT,
     THEME_WARM,
 )
@@ -40,6 +41,15 @@ class SetPreferenceTests(TestCase):
         self.assertEqual(result, THEME_WARM)
         profile = UserProfile.objects.get(user=user)
         self.assertEqual(profile.theme, THEME_WARM)
+
+    def test_persists_cool_ledger_theme_preference(self):
+        user = User.objects.create_user(username="coolwriter", password="pass1234")
+
+        result = set_preference(user, THEME_COOL)
+
+        self.assertEqual(result, THEME_COOL)
+        profile = UserProfile.objects.get(user=user)
+        self.assertEqual(profile.theme, THEME_COOL)
 
     def test_invalid_value_raises_without_changing_profile(self):
         user = User.objects.create_user(username="guard", password="pass1234")

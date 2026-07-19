@@ -14,13 +14,13 @@
         var match = document.cookie.match(/(?:^|; )ft_theme=([^;]*)/);
         pref = match ? decodeURIComponent(match[1]) : "system";
       }
-      if (pref !== "warm" && pref !== "night" && pref !== "system") {
+      if (pref !== "warm" && pref !== "night" && pref !== "cool" && pref !== "system") {
         pref = "system";
       }
       root.setAttribute("data-theme-preference", pref);
       /* Twin of theme.js resolve(): System -> Warm Ledger / Night Ledger from OS scheme. */
       function resolve(preference) {
-        if (preference === "warm" || preference === "night") return preference;
+        if (preference === "warm" || preference === "night" || preference === "cool") return preference;
         return window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "warm";
       }
       var theme = resolve(pref);

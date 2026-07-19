@@ -8,7 +8,9 @@
     <p class="page-eyebrow">Overview</p>
     <h1 class="page-title">Dashboard</h1>
   </div>
-  <a href="{% url 'add_transaction' %}" class="btn btn-primary">+ Add transaction</a>
+  <div class="page-actions">
+    <a href="{% url 'add_transaction' %}" class="btn btn-primary">+ Add transaction</a>
+  </div>
 </div>
 
 {% if conversion_degraded %}

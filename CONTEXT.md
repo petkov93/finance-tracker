@@ -49,7 +49,7 @@ The conversion pair remembered after the user's most recent successful convert o
 _Avoid_: Recent pair, saved currencies
 
 **Theme preference**:
-The user's chosen appearance mode stored on their profile: Warm Ledger, Night Ledger, or System.
+The user's chosen appearance mode stored on their profile: Warm Ledger, Night Ledger, Cool Ledger, or System.
 _Avoid_: Color scheme setting, UI mode, skin, dark mode toggle (as the only name for the whole feature)
 
 **Warm Ledger**:
@@ -59,6 +59,10 @@ _Avoid_: Light mode, default theme (unless describing the historical single look
 **Night Ledger**:
 The same-family dark appearance companion to Warm Ledger.
 _Avoid_: Dark mode (alone), inverted theme, generic slate dark
+
+**Cool Ledger**:
+The cool stone/slate-paper appearance in the same Ledger family as Warm Ledger and Night Ledger — same chrome metaphor, cooler temperature.
+_Avoid_: Blue theme, slate mode, third dark mode, Cool mode
 
 **System** (appearance):
 Theme preference that resolves to Warm Ledger or Night Ledger from the operating system color scheme, including live updates while a tab is open.
