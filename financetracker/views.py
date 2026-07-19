@@ -64,6 +64,7 @@ from .services.iou import (
     is_iou_linked_transaction,
     record_repayment,
     reopen_unpaid,
+    selectable_categories,
     update_iou_metadata,
     update_repayment,
 )
@@ -227,7 +228,7 @@ def add_transaction(request):
                 "form": None,
                 "currency_error": True,
                 "title": "Add Transaction",
-                "all_categories": Category.objects.all(),
+                "all_categories": selectable_categories(),
             },
             status=200,
         )
@@ -256,7 +257,7 @@ def add_transaction(request):
     return render(request, "financetracker/add_transaction.html", {
         "form": form,
         "title": "Add Transaction",
-        "all_categories": Category.objects.all(),
+        "all_categories": selectable_categories(),
     })
 
 
@@ -284,7 +285,7 @@ def edit_transaction(request, pk):
                 "currency_error": True,
                 "title": "Edit Transaction",
                 "transaction": transaction,
-                "all_categories": Category.objects.all(),
+                "all_categories": selectable_categories(),
             },
             status=200,
         )
@@ -317,7 +318,7 @@ def edit_transaction(request, pk):
         "form": form,
         "title": "Edit Transaction",
         "transaction": transaction,
-        "all_categories": Category.objects.all(),
+        "all_categories": selectable_categories(),
     })
 
 

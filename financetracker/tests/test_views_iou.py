@@ -666,8 +666,17 @@ class IouPolishViewTests(TestCase):
             amount=Decimal("100.00"),
             currency="CZK",
         )
+        create_payable(
+            self.user,
+            counterparty_name="Sam",
+            amount=Decimal("50.00"),
+            currency="CZK",
+        )
 
         response = self.client.get(reverse("add_transaction"))
 
-        self.assertNotContains(response, ">Lending<")
-        self.assertNotContains(response, ">Borrowing<")
+        category_names = {c.name for c in response.context["all_categories"]}
+        self.assertNotIn("Lending", category_names)
+        self.assertNotIn("Borrowing", category_names)
+        self.assertNotContains(response, "Lending")
+        self.assertNotContains(response, "Borrowing")

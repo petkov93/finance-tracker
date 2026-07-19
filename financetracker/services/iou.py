@@ -147,6 +147,13 @@ def ensure_borrowing_category() -> Category:
     return category
 
 
+def selectable_categories() -> QuerySet[Category]:
+    """Categories users may pick on add/edit transaction (not IOU system categories)."""
+    return Category.objects.exclude(
+        name__in=[LENDING_CATEGORY_NAME, BORROWING_CATEGORY_NAME],
+    )
+
+
 def create_receivable(
     user: User,
     *,
