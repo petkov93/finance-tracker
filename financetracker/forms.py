@@ -4,7 +4,8 @@ from django import forms
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import InvestmentEntry, IOU, Transaction, UserProfile
+from .models import Category, InvestmentEntry, IOU, Transaction, UserProfile
+from .services.iou import BORROWING_CATEGORY_NAME, LENDING_CATEGORY_NAME
 
 COMMON_CURRENCY_CODES = ("CZK", "USD", "EUR", "JPY", "GBP", "CNY")
 
@@ -146,6 +147,9 @@ class TransactionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         choices = list(currency_choices or [])
         self.fields["currency"].choices = choices
+        self.fields["category"].queryset = Category.objects.exclude(
+            name__in=[LENDING_CATEGORY_NAME, BORROWING_CATEGORY_NAME],
+        )
         self.fields["category"].empty_label = "— No category —"
         self.fields["category"].required = False
         if not self.instance.pk and default_currency:

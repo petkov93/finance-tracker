@@ -17,6 +17,7 @@ from .models import (
     Category,
     InvestmentEntry,
     IOU,
+    IOURepayment,
     UserProfile,
     ensure_user_profile,
 )
@@ -50,15 +51,21 @@ from .services.currency import (
 from .services.display_conversion import convert_for_display
 from .services.iou import (
     TransactionIouGuardError,
+    active_iou_queryset,
+    clear_finished_ious,
     close_unpaid,
     compute_open_iou_adjustment,
     create_payable,
     create_receivable,
     delete_transaction_with_iou_effects,
+    exclude_iou_linked_transactions,
     guard_opening_transaction_amount_currency,
+    iou_linked_transaction_ids,
+    is_iou_linked_transaction,
     record_repayment,
     reopen_unpaid,
     update_iou_metadata,
+    update_repayment,
 )
 from .services.statistics_aggregation import aggregate_for_statistics
 
@@ -152,10 +159,14 @@ def dashboard(request):
     
     profile = ensure_user_profile(request.user)
     all_transactions = Transaction.objects.filter(user=request.user)
+    spending_transactions = exclude_iou_linked_transactions(all_transactions)
+    linked_ids = iou_linked_transaction_ids(request.user)
     display = convert_for_display(
         qs,
         profile.default_currency,
         totals_transactions=all_transactions,
+        spending_totals_transactions=spending_transactions,
+        iou_linked_transaction_ids=linked_ids,
     )
 
     conversion_degraded = display.conversion_degraded
@@ -252,6 +263,13 @@ def add_transaction(request):
 @login_required
 def edit_transaction(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    if is_iou_linked_transaction(transaction):
+        messages.error(
+            request,
+            "IOU-linked transactions cannot be edited from the dashboard. "
+            "Manage repayments on the IOU detail page.",
+        )
+        return redirect("dashboard")
     currency_context = _transaction_currency_context(request)
     if currency_context is None:
         messages.error(
@@ -307,6 +325,13 @@ def edit_transaction(request, pk):
 @require_POST
 def delete_transaction(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    if is_iou_linked_transaction(transaction):
+        messages.error(
+            request,
+            "IOU-linked transactions cannot be deleted from the dashboard. "
+            "Manage repayments on the IOU detail page.",
+        )
+        return redirect("dashboard")
     try:
         delete_transaction_with_iou_effects(transaction)
     except TransactionIouGuardError as exc:
@@ -342,17 +367,18 @@ def statistics(request):
         from_date, to_date = to_date, from_date
 
     qs_filtered = qs.filter(date__gte=from_date, date__lte=to_date)
+    spending_qs = exclude_iou_linked_transactions(qs_filtered)
 
     profile = ensure_user_profile(request.user)
     display = convert_for_display(
-        qs_filtered,
+        spending_qs,
         profile.default_currency,
-        totals_transactions=qs_filtered,
+        totals_transactions=spending_qs,
     )
 
-    total_count   = qs_filtered.count()
-    income_count  = qs_filtered.filter(type="income").count()
-    expense_count = qs_filtered.filter(type="expense").count()
+    total_count   = spending_qs.count()
+    income_count  = spending_qs.filter(type="income").count()
+    expense_count = spending_qs.filter(type="expense").count()
 
     aggregation = aggregate_for_statistics(display)
 
@@ -469,16 +495,8 @@ def delete_investment(request, pk):
 
 @login_required
 def ious(request):
-    receivables = IOU.objects.filter(
-        user=request.user,
-        direction=IOU.RECEIVABLE,
-        status=IOU.ACTIVE,
-    )
-    payables = IOU.objects.filter(
-        user=request.user,
-        direction=IOU.PAYABLE,
-        status=IOU.ACTIVE,
-    )
+    receivables = active_iou_queryset(request.user, direction=IOU.RECEIVABLE)
+    payables = active_iou_queryset(request.user, direction=IOU.PAYABLE)
     closed_ious = IOU.objects.filter(
         user=request.user,
         status__in=[IOU.PAID, IOU.UNPAID],
@@ -641,6 +659,42 @@ def iou_detail(request, pk):
                 )
                 messages.success(request, "IOU details updated.")
                 return redirect("iou_detail", pk=pk)
+        elif action == "edit_repayment":
+            if iou.status != IOU.ACTIVE:
+                messages.error(request, "Only active IOUs accept repayment changes.")
+                return redirect("iou_detail", pk=pk)
+
+            repayment = get_object_or_404(
+                IOURepayment,
+                pk=request.POST.get("repayment_id"),
+                iou=iou,
+            )
+            repay_form = RepayForm(
+                request.POST,
+                max_amount=iou.remaining_amount + repayment.amount,
+                currency=iou.currency,
+            )
+            if repay_form.is_valid():
+                update_repayment(
+                    repayment,
+                    amount=repay_form.cleaned_data["amount"],
+                    transaction_date=repay_form.cleaned_data["date"],
+                )
+                messages.success(request, "Repayment updated.")
+                return redirect("iou_detail", pk=pk)
+        elif action == "delete_repayment":
+            if iou.status != IOU.ACTIVE:
+                messages.error(request, "Only active IOUs accept repayment changes.")
+                return redirect("iou_detail", pk=pk)
+
+            repayment = get_object_or_404(
+                IOURepayment,
+                pk=request.POST.get("repayment_id"),
+                iou=iou,
+            )
+            delete_transaction_with_iou_effects(repayment.transaction)
+            messages.success(request, "Repayment deleted.")
+            return redirect("iou_detail", pk=pk)
         elif action == "repay":
             if iou.status != IOU.ACTIVE:
                 messages.error(request, "This IOU is closed and cannot accept repayments.")
@@ -718,6 +772,10 @@ def settings_view(request):
                 "selected_theme": for_request(request),
                 "transaction_count": Transaction.objects.filter(user=request.user).count(),
                 "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
+                "finished_iou_count": IOU.objects.filter(
+                    user=request.user,
+                    status=IOU.PAID,
+                ).count(),
             },
             status=200,
         )
@@ -770,6 +828,10 @@ def settings_view(request):
         "selected_theme": for_request(request),
         "transaction_count": Transaction.objects.filter(user=request.user).count(),
         "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
+        "finished_iou_count": IOU.objects.filter(
+            user=request.user,
+            status=IOU.PAID,
+        ).count(),
     })
 
 
@@ -788,6 +850,18 @@ def clear_all_investments(request):
     count = InvestmentEntry.objects.filter(user=request.user).count()
     InvestmentEntry.objects.filter(user=request.user).delete()
     messages.success(request, f"Deleted all {count} investment entr{'y' if count == 1 else 'ies'}.")
+    return redirect("settings")
+
+
+@login_required
+@require_POST
+def clear_finished_ious_view(request):
+    count = clear_finished_ious(request.user)
+    messages.success(
+        request,
+        f"Deleted {count} finished IOU record{'s' if count != 1 else ''}. "
+        "Linked transactions were kept on the dashboard.",
+    )
     return redirect("settings")
 
 
