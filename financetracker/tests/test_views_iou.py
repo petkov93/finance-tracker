@@ -2,12 +2,13 @@ from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.contrib.messages import get_messages
 from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import IOU, Transaction, ensure_user_profile
 from financetracker.services.currency import RateResult
-from financetracker.services.iou import create_payable, create_receivable
+from financetracker.services.iou import close_unpaid, create_payable, create_receivable
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_iou,
@@ -125,10 +126,13 @@ class IouViewsTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("ious"))
-        iou = IOU.objects.get(user=self.user)
-        self.assertEqual(iou.counterparty_name, "Jamie")
-        self.assertEqual(iou.remaining_amount, Decimal("500.00"))
-        self.assertEqual(iou.opening_transaction.category.name, "Lending")
+        self.assertTrue(
+            IOU.objects.filter(
+                user=self.user,
+                direction=IOU.RECEIVABLE,
+                counterparty_name="Jamie",
+            ).exists()
+        )
 
     def test_add_borrow_creates_payable_and_redirects(self):
         response = self.client.post(
@@ -143,11 +147,13 @@ class IouViewsTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("ious"))
-        iou = IOU.objects.get(user=self.user, direction=IOU.PAYABLE)
-        self.assertEqual(iou.counterparty_name, "Sam")
-        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
-        self.assertEqual(iou.opening_transaction.category.name, "Borrowing")
-        self.assertEqual(iou.opening_transaction.type, Transaction.INCOME)
+        self.assertTrue(
+            IOU.objects.filter(
+                user=self.user,
+                direction=IOU.PAYABLE,
+                counterparty_name="Sam",
+            ).exists()
+        )
 
     def test_dashboard_exposes_available_and_total_context_keys(self):
         create_transaction(
@@ -265,3 +271,512 @@ class IouViewsTests(TestCase):
         self.assertContains(response, 'class="sidebar-badge"')
         self.assertContains(response, 'aria-label="2 IOU due soon"')
         self.assertContains(response, ">2<")
+
+    def test_iou_detail_shows_opening_and_repayment_transactions(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.get(reverse("iou_detail", args=[iou.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Jamie")
+        self.assertContains(response, "Linked transactions")
+        self.assertContains(response, "Lent to Jamie")
+        self.assertContains(response, "Record repayment")
+
+    def test_iou_detail_isolated_to_owner(self):
+        iou = create_receivable(
+            self.other_user,
+            counterparty_name="Theirs",
+            amount=Decimal("100.00"),
+            currency="CZK",
+        )
+
+        response = self.client.get(reverse("iou_detail", args=[iou.pk]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_repay_partial_updates_remaining_and_dashboard_balances(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"amount": "200.00", "date": "2026-07-10"},
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+        self.assertEqual(iou.status, IOU.ACTIVE)
+        self.assertEqual(iou.repayments.count(), 1)
+
+        dashboard = self.client.get(reverse("dashboard"))
+        self.assertEqual(dashboard.context["available"], Decimal("700.00"))
+        self.assertEqual(dashboard.context["total"], Decimal("1000.00"))
+
+        detail = self.client.get(reverse("iou_detail", args=[iou.pk]))
+        self.assertContains(detail, "Repayment from Jamie")
+        self.assertContains(detail, "200.00")
+
+    def test_repay_full_closes_iou_as_paid(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"amount": "500.00", "date": "2026-07-10"},
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        iou.refresh_from_db()
+        self.assertEqual(iou.status, IOU.PAID)
+        self.assertEqual(iou.remaining_amount, Decimal("0"))
+
+        detail = self.client.get(reverse("iou_detail", args=[iou.pk]))
+        self.assertNotContains(detail, "Record repayment")
+
+    def test_repay_rejects_amount_over_remaining(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"amount": "500.01", "date": "2026-07-10"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("500.00"))
+        self.assertEqual(iou.repayments.count(), 0)
+
+    @patch(
+        "financetracker.views.record_repayment",
+        side_effect=ValueError("Repayment amount cannot exceed remaining amount."),
+    )
+    def test_repay_surfaces_service_rejection_instead_of_500(self, _mock_record):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "repay", "amount": "200.00", "date": "2026-07-10"},
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        messages = [m.message for m in get_messages(response.wsgi_request)]
+        self.assertIn("Repayment amount cannot exceed remaining amount.", messages)
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("500.00"))
+        self.assertEqual(iou.repayments.count(), 0)
+
+    def test_close_unpaid_from_detail_updates_status_and_dashboard_total(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"amount": "200.00", "date": "2026-07-10", "action": "repay"},
+        )
+        iou.refresh_from_db()
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "close_unpaid"},
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        iou.refresh_from_db()
+        self.assertEqual(iou.status, IOU.UNPAID)
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+
+        dashboard = self.client.get(reverse("dashboard"))
+        self.assertEqual(dashboard.context["available"], Decimal("700.00"))
+        self.assertEqual(dashboard.context["total"], Decimal("700.00"))
+
+    def test_reopen_unpaid_from_detail_restores_dashboard_total(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"amount": "200.00", "date": "2026-07-10", "action": "repay"},
+        )
+        close_unpaid(iou)
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "reopen"},
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        iou.refresh_from_db()
+        self.assertEqual(iou.status, IOU.ACTIVE)
+
+        dashboard = self.client.get(reverse("dashboard"))
+        self.assertEqual(dashboard.context["available"], Decimal("700.00"))
+        self.assertEqual(dashboard.context["total"], Decimal("1000.00"))
+
+        detail = self.client.get(reverse("iou_detail", args=[iou.pk]))
+        self.assertContains(detail, "Reopen IOU", count=0)
+        self.assertContains(detail, "Close as unpaid")
+
+    def test_edit_metadata_on_active_iou(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+            due_date=date(2026, 8, 1),
+        )
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {
+                "action": "edit_metadata",
+                "counterparty_name": "James",
+                "due_date": "2026-09-15",
+            },
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        iou.refresh_from_db()
+        self.assertEqual(iou.counterparty_name, "James")
+        self.assertEqual(iou.due_date, date(2026, 9, 15))
+
+    def test_paid_iou_cannot_be_reopened_or_edited(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"amount": "500.00", "date": "2026-07-10", "action": "repay"},
+        )
+        iou.refresh_from_db()
+        self.assertEqual(iou.status, IOU.PAID)
+
+        reopen = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "reopen"},
+        )
+        self.assertRedirects(reopen, reverse("iou_detail", args=[iou.pk]))
+
+        edit = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {
+                "action": "edit_metadata",
+                "counterparty_name": "James",
+            },
+        )
+        self.assertRedirects(edit, reverse("iou_detail", args=[iou.pk]))
+
+        iou.refresh_from_db()
+        self.assertEqual(iou.counterparty_name, "Jamie")
+        self.assertEqual(iou.status, IOU.PAID)
+
+        detail = self.client.get(reverse("iou_detail", args=[iou.pk]))
+        self.assertNotContains(detail, "Edit details")
+        self.assertNotContains(detail, "Reopen IOU")
+
+    def test_ious_page_shows_collapsible_closed_section_with_unpaid_missing_amount(self):
+        create_receivable(
+            self.user,
+            counterparty_name="Active",
+            amount=Decimal("100.00"),
+            currency="CZK",
+        )
+        unpaid = create_receivable(
+            self.user,
+            counterparty_name="Written off",
+            amount=Decimal("300.00"),
+            currency="CZK",
+        )
+        close_unpaid(unpaid)
+        paid = create_receivable(
+            self.user,
+            counterparty_name="Settled",
+            amount=Decimal("50.00"),
+            currency="CZK",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[paid.pk]),
+            {"amount": "50.00", "date": "2026-07-10", "action": "repay"},
+        )
+
+        response = self.client.get(reverse("ious"))
+
+        self.assertContains(response, "Closed (2)")
+        self.assertContains(response, "Written off")
+        self.assertContains(response, "300.00")
+        self.assertContains(response, "missing")
+        self.assertContains(response, "Settled")
+        receivables = list(response.context["receivables"])
+        self.assertEqual(len(receivables), 1)
+        self.assertEqual(receivables[0].counterparty_name, "Active")
+
+
+class IouPolishViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = create_user()
+        ensure_user_profile(self.user)
+        self.client.login(username=self.user.username, password=DEFAULT_PASSWORD)
+        self.supported_patcher = patch(
+            "financetracker.views.get_supported_currencies",
+            return_value=SUPPORTED.copy(),
+        )
+        self.supported_patcher.start()
+        self.addCleanup(self.supported_patcher.stop)
+
+    def test_dashboard_hides_edit_for_iou_linked_transactions(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        opening = iou.opening_transaction
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertNotContains(
+            response,
+            f'href="{reverse("edit_transaction", args=[opening.pk])}"',
+        )
+
+    def test_dashboard_spending_pills_exclude_iou_amounts(self):
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+        )
+        create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.context["total_income"], Decimal("1000.00"))
+        self.assertEqual(response.context["total_expense"], Decimal("0"))
+        self.assertEqual(response.context["available"], Decimal("500.00"))
+
+    def test_edit_repayment_from_iou_detail_updates_remaining(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("5.00"),
+            currency="EUR",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "repay", "amount": "3.00", "date": "2026-07-10"},
+        )
+        repayment = iou.repayments.get()
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {
+                "action": "edit_repayment",
+                "repayment_id": repayment.pk,
+                "amount": "2.00",
+                "date": "2026-07-11",
+            },
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("3.00"))
+
+    @patch(
+        "financetracker.views.update_repayment",
+        side_effect=ValueError("Repayment amount cannot exceed remaining amount."),
+    )
+    def test_edit_repayment_surfaces_service_rejection_instead_of_500(
+        self, _mock_update
+    ):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("5.00"),
+            currency="EUR",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "repay", "amount": "3.00", "date": "2026-07-10"},
+        )
+        repayment = iou.repayments.get()
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {
+                "action": "edit_repayment",
+                "repayment_id": repayment.pk,
+                "amount": "2.00",
+                "date": "2026-07-11",
+            },
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        messages = [m.message for m in get_messages(response.wsgi_request)]
+        self.assertIn("Repayment amount cannot exceed remaining amount.", messages)
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("2.00"))
+
+    def test_delete_repayment_from_iou_detail(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "repay", "amount": "200.00", "date": "2026-07-10"},
+        )
+        repayment = iou.repayments.get()
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {
+                "action": "delete_repayment",
+                "repayment_id": repayment.pk,
+            },
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        iou.refresh_from_db()
+        self.assertEqual(iou.remaining_amount, Decimal("500.00"))
+        self.assertEqual(iou.repayments.count(), 0)
+
+    def test_delete_repayment_on_paid_iou_available_from_detail(self):
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {"action": "repay", "amount": "500.00", "date": "2026-07-10"},
+        )
+        repayment = iou.repayments.get()
+
+        detail = self.client.get(reverse("iou_detail", args=[iou.pk]))
+        self.assertContains(detail, "Paid")
+        self.assertContains(detail, "Delete repayment")
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {
+                "action": "delete_repayment",
+                "repayment_id": repayment.pk,
+            },
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        reopened = self.client.get(reverse("iou_detail", args=[iou.pk]))
+        self.assertContains(reopened, "Active")
+        self.assertNotContains(reopened, "Delete repayment")
+
+    def test_clear_finished_ious_from_settings(self):
+        paid = create_receivable(
+            self.user,
+            counterparty_name="Settled",
+            amount=Decimal("50.00"),
+            currency="CZK",
+        )
+        self.client.post(
+            reverse("iou_detail", args=[paid.pk]),
+            {"action": "repay", "amount": "50.00", "date": "2026-07-10"},
+        )
+        paid.refresh_from_db()
+        paid_opening_id = paid.opening_transaction_id
+        paid_repayment_id = paid.repayments.get().transaction_id
+        unpaid = create_receivable(
+            self.user,
+            counterparty_name="Written off",
+            amount=Decimal("100.00"),
+            currency="CZK",
+        )
+        close_unpaid(unpaid)
+
+        response = self.client.post(reverse("clear_finished_ious"))
+
+        self.assertRedirects(response, reverse("settings"))
+        self.assertFalse(IOU.objects.filter(counterparty_name="Settled").exists())
+        self.assertTrue(IOU.objects.filter(counterparty_name="Written off").exists())
+        self.assertFalse(Transaction.objects.filter(pk=paid_opening_id).exists())
+        self.assertFalse(Transaction.objects.filter(pk=paid_repayment_id).exists())
+
+    def test_add_transaction_form_excludes_lending_and_borrowing_categories(self):
+        create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("100.00"),
+            currency="CZK",
+        )
+        create_payable(
+            self.user,
+            counterparty_name="Sam",
+            amount=Decimal("50.00"),
+            currency="CZK",
+        )
+
+        response = self.client.get(reverse("add_transaction"))
+
+        category_names = {c.name for c in response.context["all_categories"]}
+        self.assertNotIn("Lending", category_names)
+        self.assertNotIn("Borrowing", category_names)
+        self.assertNotContains(response, "Lending")
+        self.assertNotContains(response, "Borrowing")

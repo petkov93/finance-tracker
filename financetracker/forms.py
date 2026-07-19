@@ -5,6 +5,7 @@ from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
 from .models import InvestmentEntry, IOU, Transaction, UserProfile
+from .services.iou import selectable_categories
 
 COMMON_CURRENCY_CODES = ("CZK", "USD", "EUR", "JPY", "GBP", "CNY")
 
@@ -146,6 +147,7 @@ class TransactionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         choices = list(currency_choices or [])
         self.fields["currency"].choices = choices
+        self.fields["category"].queryset = selectable_categories()
         self.fields["category"].empty_label = "— No category —"
         self.fields["category"].required = False
         if not self.instance.pk and default_currency:
@@ -227,6 +229,51 @@ class BorrowForm(LendForm):
         widget=forms.TextInput(
             attrs={"class": "form-control", "placeholder": "Name or nickname"},
         ),
+    )
+
+
+class RepayForm(forms.Form):
+    amount = forms.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "step": "0.01", "min": "0.01", "placeholder": "0.00"},
+        ),
+    )
+    date = forms.DateField(
+        label="Transaction date",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+
+    def __init__(self, *args, max_amount=None, currency=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_amount = max_amount
+        self.currency = currency
+
+    def clean_amount(self):
+        amount = self.cleaned_data.get("amount")
+        if amount is None or self.max_amount is None:
+            return amount
+        if amount > self.max_amount:
+            raise forms.ValidationError(
+                f"Amount cannot exceed remaining balance "
+                f"({self.max_amount:.2f} {self.currency})."
+            )
+        return amount
+
+
+class IOUMetadataForm(forms.Form):
+    counterparty_name = forms.CharField(
+        max_length=255,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "Name or nickname"},
+        ),
+    )
+    due_date = forms.DateField(
+        required=False,
+        label="Due date",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
 
 

@@ -1,0 +1,227 @@
+{% extends "financetracker/base.html" %}
+{% load money %}
+{% block title %}IOU — {{ iou.counterparty_name }} — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">IOU detail</p>
+    <h1 class="page-title">{{ iou.counterparty_name }}</h1>
+    <p class="page-sub">
+      {% if iou.direction == "receivable" %}
+        Lent to {{ iou.counterparty_name }}
+      {% else %}
+        Borrowed from {{ iou.counterparty_name }}
+      {% endif %}
+      · {{ iou.get_status_display }}
+    </p>
+  </div>
+  <a href="{% url 'ious' %}" class="btn btn-ghost">← Back to IOUs</a>
+</div>
+
+<section class="section animate-in animate-in-delay-1">
+  <div class="filter-grid">
+    <div class="stat-pill">
+      <span class="summary-label">Original amount</span>
+      <span class="stat-pill-value">{% money iou.original_amount iou.currency %}</span>
+    </div>
+    <div class="stat-pill">
+      <span class="summary-label">Remaining</span>
+      <span class="stat-pill-value">{% money iou.remaining_amount iou.currency %}</span>
+    </div>
+    {% if iou.due_date %}
+      <div class="stat-pill">
+        <span class="summary-label">Due date</span>
+        <span class="stat-pill-value">{{ iou.due_date|date:"d.m.Y" }}</span>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if iou.status == 'unpaid' and iou.remaining_amount %}
+<section class="section animate-in animate-in-delay-2">
+  <div class="stat-pill">
+    <span class="summary-label">Missing amount</span>
+    <span class="stat-pill-value">{% money iou.remaining_amount iou.currency %}</span>
+  </div>
+</section>
+{% endif %}
+
+{% if metadata_form %}
+<section class="section animate-in animate-in-delay-2">
+  <div class="section-header">
+    <h2 class="section-title">Edit details</h2>
+  </div>
+
+  <div class="form-card">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="edit_metadata">
+
+      <div class="filter-grid">
+        <div class="form-group">
+          <label class="form-label" for="{{ metadata_form.counterparty_name.id_for_label }}">Counterparty</label>
+          {{ metadata_form.counterparty_name }}
+          {% if metadata_form.counterparty_name.errors %}<div class="form-error">{{ metadata_form.counterparty_name.errors.0 }}</div>{% endif %}
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ metadata_form.due_date.id_for_label }}">{{ metadata_form.due_date.label }}</label>
+          {{ metadata_form.due_date }}
+          {% if metadata_form.due_date.errors %}<div class="form-error">{{ metadata_form.due_date.errors.0 }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-ghost">Save changes</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+{% if repay_form %}
+<section class="section animate-in animate-in-delay-2">
+  <div class="section-header">
+    <h2 class="section-title">Record repayment</h2>
+    <span class="link-muted">Up to {% money iou.remaining_amount iou.currency %}</span>
+  </div>
+
+  <div class="form-card">
+    <form method="post" novalidate>
+      {% csrf_token %}
+      <input type="hidden" name="action" value="repay">
+
+      <div class="filter-grid">
+        <div class="form-group">
+          <label class="form-label" for="{{ repay_form.amount.id_for_label }}">Amount ({{ iou.currency }})</label>
+          {{ repay_form.amount }}
+          {% if repay_form.amount.errors %}<div class="form-error">{{ repay_form.amount.errors.0 }}</div>{% endif %}
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="{{ repay_form.date.id_for_label }}">{{ repay_form.date.label }}</label>
+          {{ repay_form.date }}
+          {% if repay_form.date.errors %}<div class="form-error">{{ repay_form.date.errors.0 }}</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Record repayment</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+{% if iou.status == 'active' %}
+<section class="section animate-in animate-in-delay-2">
+  <div class="form-actions">
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="close_unpaid">
+      <button type="submit" class="btn btn-ghost">Close as unpaid</button>
+    </form>
+  </div>
+</section>
+{% elif iou.status == 'unpaid' %}
+<section class="section animate-in animate-in-delay-2">
+  <div class="form-actions">
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="reopen">
+      <button type="submit" class="btn btn-primary">Reopen IOU</button>
+    </form>
+  </div>
+</section>
+{% endif %}
+
+<section class="section animate-in animate-in-delay-3">
+  <div class="section-header">
+    <h2 class="section-title">Linked transactions</h2>
+  </div>
+
+  <div class="transaction-list">
+    <div class="transaction-row">
+      <div class="transaction-left">
+        <div class="transaction-icon {% if iou.opening_transaction.type == 'income' %}icon-income{% else %}icon-expense{% endif %}">
+          {% if iou.opening_transaction.type == 'income' %}←{% else %}→{% endif %}
+        </div>
+        <div class="transaction-info">
+          <div class="transaction-desc">{{ iou.opening_transaction.description|default:"Opening transaction" }}</div>
+          <div class="transaction-meta">
+            Opening · {{ iou.opening_transaction.date|date:"d.m.Y" }}
+            {% if iou.opening_transaction.category %}
+              · {{ iou.opening_transaction.category.name }}
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="transaction-right">
+        <div class="transaction-amount {% if iou.opening_transaction.type == 'income' %}amount-income{% else %}amount-expense{% endif %}">
+          {% money iou.opening_transaction.amount iou.opening_transaction.currency %}
+        </div>
+      </div>
+    </div>
+
+    {% for repayment in repayments %}
+      <div class="transaction-row">
+        <div class="transaction-left">
+          <div class="transaction-icon {% if repayment.transaction.type == 'income' %}icon-income{% else %}icon-expense{% endif %}">
+            {% if repayment.transaction.type == 'income' %}←{% else %}→{% endif %}
+          </div>
+          <div class="transaction-info">
+            <div class="transaction-desc">{{ repayment.transaction.description|default:"Repayment" }}</div>
+            <div class="transaction-meta">
+              Repayment · {{ repayment.transaction.date|date:"d.m.Y" }}
+              {% if repayment.transaction.category %}
+                · {{ repayment.transaction.category.name }}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="transaction-right">
+          <div class="transaction-amount {% if repayment.transaction.type == 'income' %}amount-income{% else %}amount-expense{% endif %}">
+            {% money repayment.transaction.amount repayment.transaction.currency %}
+          </div>
+          {% if iou.status == 'active' or iou.status == 'paid' %}
+          <details class="repayment-edit-panel">
+            <summary class="action-link edit">Manage</summary>
+            <div class="form-card repayment-edit-form">
+              {% if iou.status == 'active' %}
+              <form method="post" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="edit_repayment">
+                <input type="hidden" name="repayment_id" value="{{ repayment.pk }}">
+                <div class="filter-grid">
+                  <div class="form-group">
+                    <label class="form-label" for="repay-amount-{{ repayment.pk }}">Amount ({{ iou.currency }})</label>
+                    <input type="number" name="amount" id="repay-amount-{{ repayment.pk }}" class="form-control" step="0.01" min="0.01" value="{{ repayment.amount }}" required>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="repay-date-{{ repayment.pk }}">Transaction date</label>
+                    <input type="date" name="date" id="repay-date-{{ repayment.pk }}" class="form-control" value="{{ repayment.transaction.date|date:'Y-m-d' }}" required>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Save changes</button>
+                </div>
+              </form>
+              {% endif %}
+              <form method="post" onsubmit="return confirm('Delete this repayment?')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_repayment">
+                <input type="hidden" name="repayment_id" value="{{ repayment.pk }}">
+                <button type="submit" class="btn btn-ghost btn-sm">Delete repayment</button>
+              </form>
+            </div>
+          </details>
+          {% endif %}
+        </div>
+      </div>
+    {% empty %}
+      {% if not repay_form %}
+        <p class="link-muted">No repayments recorded.</p>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

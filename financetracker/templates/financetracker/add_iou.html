@@ -11,6 +11,9 @@
 </div>
 
 <div class="form-card">
+  {% if currency_error %}
+    <p class="form-error">Couldn't load supported currencies right now. Try again in a moment.</p>
+  {% elif form %}
   <form method="post" novalidate>
     {% csrf_token %}
 
@@ -48,8 +51,9 @@
 
     <div class="form-actions">
       <a href="{% url 'ious' %}" class="btn btn-ghost">Cancel</a>
-      <button type="submit" class="btn btn-primary">{{ submit_label|default:"Record loan" }}</button>
+      <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
     </div>
   </form>
+  {% endif %}
 </div>
 {% endblock %}

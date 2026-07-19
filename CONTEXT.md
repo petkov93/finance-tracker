@@ -63,3 +63,43 @@ _Avoid_: Dark mode (alone), inverted theme, generic slate dark
 **System** (appearance):
 Theme preference that resolves to Warm Ledger or Night Ledger from the operating system color scheme, including live updates while a tab is open.
 _Avoid_: Auto theme, OS theme (as the stored preference value name — the stored value is `system`)
+
+**IOU**:
+A tracked lend or borrow arrangement between the user and a named counterparty, with an opening cash transaction and optional repayments.
+_Avoid_: Loan record, debt entry, credit line
+
+**Receivable**:
+An IOU where the user lent money and is still owed the remaining amount.
+_Avoid_: Lend IOU, money owed to me, asset IOU
+
+**Payable**:
+An IOU where the user borrowed money and still owes the remaining amount.
+_Avoid_: Borrow IOU, money I owe, liability IOU
+
+**Available balance**:
+Cash position from all-time income minus expenses, display-converted to the user's default currency, including IOU-linked cash movements.
+_Avoid_: Balance, net worth, total cash
+
+**Total balance**:
+Available balance plus open receivables minus open payables, each IOU amount display-converted to the user's default currency. Open IOU amounts use the latest exchange rate (same rate source as display conversion for today's date), not the opening or due date.
+_Avoid_: Net worth, economic balance, adjusted balance
+
+**Spending and income totals**:
+Dashboard income and expense figures that exclude IOU-linked transactions; they reflect day-to-day earning and spending only.
+_Avoid_: Real income, core expenses, non-IOU totals
+
+**Finished IOU**:
+A paid IOU — fully settled with zero remaining amount. Unpaid IOUs are closed but not finished.
+_Avoid_: Closed IOU, completed loan, settled debt
+
+**IOU start date**:
+The date of the IOU opening transaction — when the lend or borrow cash movement was recorded.
+_Avoid_: Created date, IOU opened at, inception timestamp
+
+**IOU-linked transaction**:
+A transaction tied to an IOU as its opening movement or a recorded repayment.
+_Avoid_: Loan transaction, debt entry, IOU expense
+
+**Spending statistics**:
+Income, expense, and category breakdowns that exclude IOU-linked transactions, on both the dashboard pills and the statistics page.
+_Avoid_: Core stats, non-IOU analytics, regular spending view
