@@ -11,11 +11,11 @@ class SeedCategoriesCommandTests(TestCase):
         out = StringIO()
         call_command("seed_categories", stdout=out)
 
-        self.assertEqual(Category.objects.count(), 13)
+        self.assertEqual(Category.objects.count(), 12)
         self.assertTrue(Category.objects.filter(name="Salary", type="income").exists())
         self.assertTrue(Category.objects.filter(name="Food", type="expense").exists())
-        self.assertTrue(Category.objects.filter(name="Lending", type="expense").exists())
-        self.assertIn("Created 13 default categories.", out.getvalue())
+        self.assertFalse(Category.objects.filter(name="Lending").exists())
+        self.assertIn("Created 12 default categories.", out.getvalue())
 
     def test_skips_when_categories_already_exist(self):
         create_category(name="Custom")
