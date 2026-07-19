@@ -5,6 +5,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import InvestmentEntry, Transaction, UserProfile, ensure_user_profile
+from financetracker.services.iou import create_receivable, record_repayment
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_investment,
@@ -74,6 +75,25 @@ class SettingsViewsTests(TestCase):
         self.assertEqual(Transaction.objects.filter(user=self.user).count(), 0)
         self.assertEqual(Transaction.objects.filter(user=self.other_user).count(), 1)
 
+    def test_clear_all_transactions_skips_iou_linked(self):
+        plain = create_transaction(self.user, amount=Decimal("40.00"))
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Pat",
+            amount=Decimal("100.00"),
+            currency="EUR",
+        )
+        record_repayment(iou, amount=Decimal("25.00"))
+        repayment_tx = iou.repayments.get().transaction
+        opening_id = iou.opening_transaction_id
+
+        response = self.client.post(reverse("clear_all_transactions"))
+        self.assertRedirects(response, reverse("settings"))
+        self.assertFalse(Transaction.objects.filter(pk=plain.pk).exists())
+        self.assertTrue(Transaction.objects.filter(pk=opening_id).exists())
+        self.assertTrue(Transaction.objects.filter(pk=repayment_tx.pk).exists())
+        self.assertEqual(Transaction.objects.filter(user=self.user).count(), 2)
+
     def test_clear_all_investments_only_for_current_user(self):
         create_investment(self.user, amount=Decimal("100.00"))
         create_investment(self.other_user, amount=Decimal("200.00"))
@@ -86,6 +106,12 @@ class SettingsViewsTests(TestCase):
     def test_settings_shows_counts(self):
         create_transaction(self.user)
         create_investment(self.user)
+        create_receivable(
+            self.user,
+            counterparty_name="Pat",
+            amount=Decimal("50.00"),
+            currency="EUR",
+        )
         response = self.client.get(reverse("settings"))
         self.assertEqual(response.context["transaction_count"], 1)
         self.assertEqual(response.context["investment_count"], 1)

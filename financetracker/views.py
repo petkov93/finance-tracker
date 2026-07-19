@@ -826,7 +826,9 @@ def settings_view(request):
         "currency_form": currency_form,
         "theme_choices": THEME_CHOICES,
         "selected_theme": for_request(request),
-        "transaction_count": Transaction.objects.filter(user=request.user).count(),
+        "transaction_count": exclude_iou_linked_transactions(
+            Transaction.objects.filter(user=request.user)
+        ).count(),
         "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
         "finished_iou_count": IOU.objects.filter(
             user=request.user,
@@ -838,8 +840,9 @@ def settings_view(request):
 @login_required
 @require_POST
 def clear_all_transactions(request):
-    count = Transaction.objects.filter(user=request.user).count()
-    Transaction.objects.filter(user=request.user).delete()
+    qs = exclude_iou_linked_transactions(Transaction.objects.filter(user=request.user))
+    count = qs.count()
+    qs.delete()
     messages.success(request, f"Deleted all {count} transaction(s).")
     return redirect("settings")
 
