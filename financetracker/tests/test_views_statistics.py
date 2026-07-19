@@ -272,3 +272,28 @@ class StatisticsViewsTests(TestCase):
 
         self.assertEqual(response.context["display_locale"], "cs")
         self.assertContains(response, "1\xa0234,56")
+
+    def test_statistics_excludes_iou_linked_transactions_from_totals(self):
+        from financetracker.services.iou import create_receivable
+
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+            category=self.category,
+            transaction_date=date.today(),
+        )
+        create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+            transaction_date=date.today(),
+        )
+
+        response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.context["total_income"], 1000.0)
+        self.assertEqual(response.context["total_expense"], 0.0)
+        self.assertEqual(response.context["total_count"], 1)

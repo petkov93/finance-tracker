@@ -25,4 +25,5 @@ urlpatterns = [
     path("settings/", views.settings_view, name="settings"),
     path("settings/clear-transactions/", views.clear_all_transactions, name="clear_all_transactions"),
     path("settings/clear-investments/", views.clear_all_investments, name="clear_all_investments"),
+    path("settings/clear-finished-ious/", views.clear_finished_ious_view, name="clear_finished_ious"),
 ]

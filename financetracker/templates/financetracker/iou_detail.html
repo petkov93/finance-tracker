@@ -182,6 +182,37 @@
           <div class="transaction-amount {% if repayment.transaction.type == 'income' %}amount-income{% else %}amount-expense{% endif %}">
             {% money repayment.transaction.amount repayment.transaction.currency %}
           </div>
+          {% if iou.status == 'active' %}
+          <details class="repayment-edit-panel">
+            <summary class="action-link edit">Manage</summary>
+            <div class="form-card repayment-edit-form">
+              <form method="post" novalidate>
+                {% csrf_token %}
+                <input type="hidden" name="action" value="edit_repayment">
+                <input type="hidden" name="repayment_id" value="{{ repayment.pk }}">
+                <div class="filter-grid">
+                  <div class="form-group">
+                    <label class="form-label" for="repay-amount-{{ repayment.pk }}">Amount ({{ iou.currency }})</label>
+                    <input type="number" name="amount" id="repay-amount-{{ repayment.pk }}" class="form-control" step="0.01" min="0.01" value="{{ repayment.amount }}" required>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="repay-date-{{ repayment.pk }}">Transaction date</label>
+                    <input type="date" name="date" id="repay-date-{{ repayment.pk }}" class="form-control" value="{{ repayment.transaction.date|date:'Y-m-d' }}" required>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary btn-sm">Save changes</button>
+                </div>
+              </form>
+              <form method="post" onsubmit="return confirm('Delete this repayment?')">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_repayment">
+                <input type="hidden" name="repayment_id" value="{{ repayment.pk }}">
+                <button type="submit" class="btn btn-ghost btn-sm">Delete repayment</button>
+              </form>
+            </div>
+          </details>
+          {% endif %}
         </div>
       </div>
     {% empty %}

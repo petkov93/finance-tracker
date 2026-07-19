@@ -304,7 +304,7 @@ class IouLinkedTransactionViewTests(TestCase):
         self.addCleanup(self.supported_patcher.stop)
         ensure_user_profile(self.user)
 
-    def test_delete_opening_transaction_blocked_while_iou_active(self):
+    def test_delete_opening_transaction_blocked_from_dashboard(self):
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
@@ -318,7 +318,7 @@ class IouLinkedTransactionViewTests(TestCase):
         self.assertRedirects(response, reverse("dashboard"))
         self.assertTrue(Transaction.objects.filter(pk=opening.pk).exists())
 
-    def test_edit_opening_transaction_amount_blocked_while_iou_active(self):
+    def test_edit_opening_transaction_blocked_from_dashboard(self):
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
@@ -327,23 +327,13 @@ class IouLinkedTransactionViewTests(TestCase):
         )
         opening = iou.opening_transaction
 
-        response = self.client.post(
-            reverse("edit_transaction", args=[opening.pk]),
-            {
-                "type": opening.type,
-                "amount": "400.00",
-                "currency": "CZK",
-                "category": opening.category_id,
-                "description": opening.description,
-                "date": opening.date.isoformat(),
-            },
-        )
+        response = self.client.get(reverse("edit_transaction", args=[opening.pk]))
 
-        self.assertEqual(response.status_code, 200)
+        self.assertRedirects(response, reverse("dashboard"))
         opening.refresh_from_db()
         self.assertEqual(opening.amount, Decimal("500.00"))
 
-    def test_delete_repayment_transaction_restores_iou_remaining(self):
+    def test_delete_repayment_blocked_from_dashboard(self):
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
@@ -358,6 +348,5 @@ class IouLinkedTransactionViewTests(TestCase):
 
         self.assertRedirects(response, reverse("dashboard"))
         iou.refresh_from_db()
-        self.assertEqual(iou.remaining_amount, Decimal("500.00"))
-        self.assertEqual(iou.status, IOU.ACTIVE)
-        self.assertFalse(Transaction.objects.filter(pk=repayment_tx.pk).exists())
+        self.assertEqual(iou.remaining_amount, Decimal("300.00"))
+        self.assertTrue(Transaction.objects.filter(pk=repayment_tx.pk).exists())

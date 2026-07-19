@@ -145,6 +145,17 @@
 
     <div class="danger-action">
       <div class="danger-action-info">
+        <h3>Finished IOUs</h3>
+        <p>{{ finished_iou_count }} paid IOU record{{ finished_iou_count|pluralize }} on your account</p>
+      </div>
+      <form method="post" action="{% url 'clear_finished_ious' %}" onsubmit="return confirm('Delete all {{ finished_iou_count }} finished IOU record{{ finished_iou_count|pluralize }} and their linked transactions? This cannot be undone.')">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger" {% if finished_iou_count == 0 %}disabled{% endif %}>Clear finished IOUs</button>
+      </form>
+    </div>
+
+    <div class="danger-action">
+      <div class="danger-action-info">
         <h3>Investments</h3>
         <p>{{ investment_count }} investment entr{{ investment_count|pluralize:"y,ies" }} on your account</p>
       </div>

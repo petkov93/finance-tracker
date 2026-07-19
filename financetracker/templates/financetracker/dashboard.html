@@ -27,26 +27,30 @@
 
 {% if iou_alerts %}
 <section class="iou-alerts-strip animate-in animate-in-delay-1" aria-label="IOUs due soon">
-  <div class="iou-alerts-header">
-    <h2 class="iou-alerts-title">IOUs due soon or overdue</h2>
-    <a href="{% url 'ious' %}" class="link-muted">View all</a>
-  </div>
-  <div class="iou-alerts-list">
-    {% for iou in iou_alerts %}
-      <div class="iou-alert-item{% if iou.due_date < today %} iou-alert-item--overdue{% endif %}">
-        <div class="iou-alert-main">
-          <span class="iou-alert-counterparty">{{ iou.counterparty_name }}</span>
-          <span class="iou-alert-meta">
-            {% if iou.direction == "receivable" %}Lent{% else %}Borrowed{% endif %}
-            · Due {{ iou.due_date|date:"d.m.Y" }}
-          </span>
-        </div>
-        <div class="iou-alert-amount">
-          {% money iou.remaining_amount iou.currency %}
-        </div>
+  <details class="filter-panel">
+    <summary class="filter-panel-toggle iou-alerts-header">
+      <span class="iou-alerts-title">IOUs due soon or overdue ({{ iou_alert_count }})</span>
+      <a href="{% url 'ious' %}" class="link-muted" onclick="event.stopPropagation()">View all</a>
+    </summary>
+    <div class="filter-panel-body">
+      <div class="iou-alerts-list">
+        {% for iou in iou_alerts %}
+          <div class="iou-alert-item{% if iou.due_date < today %} iou-alert-item--overdue{% endif %}">
+            <div class="iou-alert-main">
+              <span class="iou-alert-counterparty">{{ iou.counterparty_name }}</span>
+              <span class="iou-alert-meta">
+                {% if iou.direction == "receivable" %}Lent{% else %}Borrowed{% endif %}
+                · Due {{ iou.due_date|date:"d.m.Y" }}
+              </span>
+            </div>
+            <div class="iou-alert-amount">
+              {% money iou.remaining_amount iou.currency %}
+            </div>
+          </div>
+        {% endfor %}
       </div>
-    {% endfor %}
-  </div>
+    </div>
+  </details>
 </section>
 {% endif %}
 
@@ -55,7 +59,7 @@
   <div class="hero-balance {% if available >= 0 %}positive{% else %}negative{% endif %}">
     <span class="summary-label">Available</span>
     <span class="hero-amount">{% money_amount available %} <small>{{ default_currency }}</small></span>
-    <span class="summary-sub">income minus expenses</span>
+    <span class="summary-sub">cash position from all transactions</span>
   </div>
   <div class="hero-balance {% if total >= 0 %}positive{% else %}negative{% endif %}">
     <span class="summary-label">Total</span>
@@ -67,12 +71,12 @@
   <div class="stat-pill income">
     <span class="summary-label">Income</span>
     <span class="stat-pill-value">{% money_amount total_income %}</span>
-    <span class="summary-sub">all time</span>
+    <span class="summary-sub">excludes IOUs</span>
   </div>
   <div class="stat-pill expense">
     <span class="summary-label">Expenses</span>
     <span class="stat-pill-value">{% money_amount total_expense %}</span>
-    <span class="summary-sub">all time</span>
+    <span class="summary-sub">excludes IOUs</span>
   </div>
 </div>
 {% endif %}
@@ -139,6 +143,7 @@
                 {% if t.type == 'income' %}+{% else %}−{% endif %}{% money row.transaction_amount row.transaction_currency %}
               </div>
             {% endif %}
+            {% if not row.is_iou_linked %}
             <div class="transaction-actions">
               <a href="{% url 'edit_transaction' t.pk %}" class="action-link edit">Edit</a>
               <form method="post" action="{% url 'delete_transaction' t.pk %}" class="inline-form" onsubmit="return confirm('Delete this transaction?')">
@@ -146,6 +151,7 @@
                 <button type="submit" class="action-link delete">Delete</button>
               </form>
             </div>
+            {% endif %}
           </div>
         </div>
         {% endwith %}
