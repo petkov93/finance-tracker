@@ -2,7 +2,7 @@
   var root = document.documentElement;
 
   function resolve(preference) {
-    if (preference === "warm" || preference === "night") {
+    if (preference === "warm" || preference === "night" || preference === "cool") {
       return preference;
     }
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "warm";

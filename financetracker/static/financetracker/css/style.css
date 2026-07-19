@@ -122,6 +122,62 @@
   --chart-pie-10: #a3e635;
 }
 
+/* ===== Cool Ledger — cool stone/slate paper ===== */
+[data-theme="cool"] {
+  --bg:           #eef1f4;
+  --bg-ruled:     repeating-linear-gradient(
+                    180deg,
+                    transparent,
+                    transparent 27px,
+                    rgba(30, 41, 59, 0.045) 27px,
+                    rgba(30, 41, 59, 0.045) 28px
+                  );
+  --surface:      #f7f9fb;
+  --surface-elev: #ffffff;
+  --ink:          #1e293b;
+  --muted:        #64748b;
+  --border:       #d5dde6;
+  --income:       #27754d;
+  --income-bg:    rgba(39, 117, 77, 0.1);
+  --expense:      #c2410c;
+  --expense-bg:   rgba(194, 65, 12, 0.1);
+  --accent:       #3b6d8f;
+  --accent-h:     #4a82a8;
+  --accent-bg:    rgba(59, 109, 143, 0.1);
+  --danger:       #b91c1c;
+  --danger-bg:    rgba(185, 28, 28, 0.06);
+  --shadow:       0 1px 2px rgba(30, 41, 59, 0.06), 0 4px 16px rgba(30, 41, 59, 0.05);
+  --shadow-lg:    0 8px 32px rgba(30, 41, 59, 0.08);
+  --overlay:      rgba(30, 41, 59, 0.35);
+  --hover-wash:   rgba(30, 41, 59, 0.04);
+  --topbar-glass: rgba(247, 249, 251, 0.65);
+  --btn-on-accent: #fff;
+  --grain-opacity: 0.3;
+  --grain-blend: multiply;
+  --focus-ring:   rgba(59, 109, 143, 0.18);
+  --warning:      #ca8a04;
+  --danger-border: rgba(185, 28, 28, 0.4);
+  --result-wash:  linear-gradient(180deg, rgba(247, 249, 251, 0.92), rgba(238, 241, 244, 0.7));
+  --result-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --pattern-wash: rgba(30, 41, 59, 0.02);
+  --chart-income:  rgba(39, 117, 77, 0.88);
+  --chart-expense: rgba(194, 65, 12, 0.88);
+  --chart-grid:    rgba(30, 41, 59, 0.08);
+  --chart-tick:    #64748b;
+  --chart-legend:  #334155;
+  --chart-surface: #f7f9fb;
+  --chart-pie-1: #3b6d8f;
+  --chart-pie-2: #b45309;
+  --chart-pie-3: #27754d;
+  --chart-pie-4: #c2410c;
+  --chart-pie-5: #1d4ed8;
+  --chart-pie-6: #9d174d;
+  --chart-pie-7: #5b21b6;
+  --chart-pie-8: #0e7490;
+  --chart-pie-9: #ca8a04;
+  --chart-pie-10: #4d7c0f;
+}
+
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;
@@ -1472,7 +1528,7 @@ a.transaction-row--link:hover {
 
 .theme-swatches {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -1540,6 +1596,10 @@ a.transaction-row--link:hover {
 .theme-swatch-night .theme-swatch-bg { background: #1a1612; }
 .theme-swatch-night .theme-swatch-accent { background: #2dd4bf; }
 .theme-swatch-night .theme-swatch-amount { color: #f5e6d3; }
+
+.theme-swatch-cool .theme-swatch-bg { background: #eef1f4; }
+.theme-swatch-cool .theme-swatch-accent { background: #3b6d8f; }
+.theme-swatch-cool .theme-swatch-amount { color: #1e293b; }
 
 .theme-swatch-system .theme-swatch-bg {
   background: linear-gradient(90deg, #f6f1e8 50%, #1a1612 50%);
