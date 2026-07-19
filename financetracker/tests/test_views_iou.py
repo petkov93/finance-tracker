@@ -705,6 +705,9 @@ class IouPolishViewTests(TestCase):
             reverse("iou_detail", args=[paid.pk]),
             {"action": "repay", "amount": "50.00", "date": "2026-07-10"},
         )
+        paid.refresh_from_db()
+        paid_opening_id = paid.opening_transaction_id
+        paid_repayment_id = paid.repayments.get().transaction_id
         unpaid = create_receivable(
             self.user,
             counterparty_name="Written off",
@@ -718,6 +721,8 @@ class IouPolishViewTests(TestCase):
         self.assertRedirects(response, reverse("settings"))
         self.assertFalse(IOU.objects.filter(counterparty_name="Settled").exists())
         self.assertTrue(IOU.objects.filter(counterparty_name="Written off").exists())
+        self.assertFalse(Transaction.objects.filter(pk=paid_opening_id).exists())
+        self.assertFalse(Transaction.objects.filter(pk=paid_repayment_id).exists())
 
     def test_add_transaction_form_excludes_lending_and_borrowing_categories(self):
         create_receivable(

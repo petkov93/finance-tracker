@@ -840,7 +840,7 @@ class ClearFinishedIousTests(TestCase):
     def setUp(self):
         self.user = create_user()
 
-    def test_clear_finished_ious_deletes_paid_only_and_keeps_transactions(self):
+    def test_clear_finished_ious_deletes_paid_ious_and_linked_transactions(self):
         paid = create_receivable(
             self.user,
             counterparty_name="Settled",
@@ -849,6 +849,7 @@ class ClearFinishedIousTests(TestCase):
         )
         record_repayment(paid, amount=Decimal("50.00"))
         paid_opening_id = paid.opening_transaction_id
+        paid_repayment_id = paid.repayments.get().transaction_id
 
         unpaid = create_receivable(
             self.user,
@@ -857,6 +858,7 @@ class ClearFinishedIousTests(TestCase):
             currency="CZK",
         )
         close_unpaid(unpaid)
+        unpaid_opening_id = unpaid.opening_transaction_id
 
         active = create_receivable(
             self.user,
@@ -864,6 +866,7 @@ class ClearFinishedIousTests(TestCase):
             amount=Decimal("25.00"),
             currency="CZK",
         )
+        active_opening_id = active.opening_transaction_id
 
         deleted = clear_finished_ious(self.user)
 
@@ -871,7 +874,10 @@ class ClearFinishedIousTests(TestCase):
         self.assertFalse(IOU.objects.filter(pk=paid.pk).exists())
         self.assertTrue(IOU.objects.filter(pk=unpaid.pk).exists())
         self.assertTrue(IOU.objects.filter(pk=active.pk).exists())
-        self.assertTrue(Transaction.objects.filter(pk=paid_opening_id).exists())
+        self.assertFalse(Transaction.objects.filter(pk=paid_opening_id).exists())
+        self.assertFalse(Transaction.objects.filter(pk=paid_repayment_id).exists())
+        self.assertTrue(Transaction.objects.filter(pk=unpaid_opening_id).exists())
+        self.assertTrue(Transaction.objects.filter(pk=active_opening_id).exists())
 
 
 class ActiveIouOrderingTests(TestCase):

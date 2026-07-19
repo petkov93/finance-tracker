@@ -307,10 +307,21 @@ def update_repayment(
     return repayment
 
 
+@transaction.atomic
 def clear_finished_ious(user: User) -> int:
-    paid_ious = IOU.objects.filter(user=user, status=IOU.PAID)
-    count = paid_ious.count()
-    paid_ious.delete()
+    paid_ious = list(
+        IOU.objects.filter(user=user, status=IOU.PAID).prefetch_related("repayments")
+    )
+    count = len(paid_ious)
+    if count == 0:
+        return 0
+
+    tx_ids = {iou.opening_transaction_id for iou in paid_ious}
+    for iou in paid_ious:
+        tx_ids.update(r.transaction_id for r in iou.repayments.all())
+
+    IOU.objects.filter(pk__in=[iou.pk for iou in paid_ious]).delete()
+    Transaction.objects.filter(pk__in=tx_ids).delete()
     return count
 
 

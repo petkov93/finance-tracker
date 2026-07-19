@@ -871,8 +871,8 @@ def clear_finished_ious_view(request):
     count = clear_finished_ious(request.user)
     messages.success(
         request,
-        f"Deleted {count} finished IOU record{'s' if count != 1 else ''}. "
-        "Linked transactions were kept on the dashboard.",
+        f"Deleted {count} finished IOU record{'s' if count != 1 else ''} "
+        "and their linked transactions.",
     )
     return redirect("settings")
 
