@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://finance-tracker-1m2b.onrender.com/sitemap.xml
