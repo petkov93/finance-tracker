@@ -11,6 +11,7 @@ from django.db.models import Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 from .models import (
     Transaction,
@@ -86,7 +87,14 @@ def login_view(request):
             user = form.get_user()
             ensure_user_profile(user)
             login(request, user)
-            return redirect(request.GET.get("next", "dashboard"))
+            next_url = request.GET.get("next")
+            if next_url and url_has_allowed_host_and_scheme(
+                next_url,
+                allowed_hosts={request.get_host()},
+                require_https=request.is_secure(),
+            ):
+                return redirect(next_url)
+            return redirect("dashboard")
         messages.error(request, "Invalid username or password.")
     else:
         form = AuthenticationForm()
