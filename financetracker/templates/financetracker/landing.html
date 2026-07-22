@@ -4,6 +4,17 @@
 {% block title %}Finance Tracker — Your personal ledger{% endblock %}
 {% block body_class %} landing{% endblock %}
 
+{% block extra_head %}
+<link
+  rel="preload"
+  as="image"
+  type="image/webp"
+  href="{% static 'financetracker/img/landing/hero-380.webp' %}"
+  imagesrcset="{% static 'financetracker/img/landing/hero-380.webp' %} 380w, {% static 'financetracker/img/landing/hero-760.webp' %} 760w"
+  imagesizes="(max-width: 800px) min(94vw, 380px), 380px"
+/>
+{% endblock %}
+
 {% block content %}
 <div class="landing">
   <section class="landing-hero animate-in" aria-labelledby="landing-hero-title">
@@ -23,14 +34,23 @@
     </div>
     <div class="landing-hero-visual" aria-hidden="true">
       <div class="landing-hero-page">
-        <img
-          src="{% static 'financetracker/img/landing/dashboard.jpg' %}"
-          alt=""
-          width="1220"
-          height="1672"
-          decoding="async"
-          fetchpriority="high"
-        />
+        <picture>
+          <source
+            type="image/webp"
+            srcset="{% static 'financetracker/img/landing/hero-380.webp' %} 380w, {% static 'financetracker/img/landing/hero-760.webp' %} 760w"
+            sizes="(max-width: 800px) min(94vw, 380px), 380px"
+          />
+          <img
+            src="{% static 'financetracker/img/landing/hero-380.jpg' %}"
+            srcset="{% static 'financetracker/img/landing/hero-380.jpg' %} 380w, {% static 'financetracker/img/landing/hero-760.jpg' %} 760w"
+            sizes="(max-width: 800px) min(94vw, 380px), 380px"
+            alt=""
+            width="380"
+            height="521"
+            decoding="async"
+            fetchpriority="high"
+          />
+        </picture>
       </div>
     </div>
   </section>
@@ -46,14 +66,23 @@
       </div>
       <figure class="landing-shot" data-landing-shot="dashboard">
         <div class="landing-shot-frame">
-          <img
-            src="{% static 'financetracker/img/landing/dashboard-sm.jpg' %}"
-            alt="Finance Tracker dashboard with balance, income, expenses, and transactions"
-            width="1125"
-            height="1182"
-            loading="lazy"
-            decoding="async"
-          />
+          <picture>
+            <source
+              type="image/webp"
+              srcset="{% static 'financetracker/img/landing/dashboard-sm-520.webp' %} 520w, {% static 'financetracker/img/landing/dashboard-sm-1040.webp' %} 1040w"
+              sizes="(max-width: 800px) 94vw, 520px"
+            />
+            <img
+              src="{% static 'financetracker/img/landing/dashboard-sm-520.jpg' %}"
+              srcset="{% static 'financetracker/img/landing/dashboard-sm-520.jpg' %} 520w, {% static 'financetracker/img/landing/dashboard-sm-1040.jpg' %} 1040w"
+              sizes="(max-width: 800px) 94vw, 520px"
+              alt="Finance Tracker dashboard with balance, income, expenses, and transactions"
+              width="520"
+              height="546"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
         </div>
         <figcaption class="visually-hidden">Dashboard screenshot</figcaption>
       </figure>
@@ -69,14 +98,23 @@
       </div>
       <figure class="landing-shot" data-landing-shot="statistics">
         <div class="landing-shot-frame">
-          <img
-            src="{% static 'financetracker/img/landing/statistics-sm.jpg' %}"
-            alt="Finance Tracker statistics with monthly overview and category charts"
-            width="1068"
-            height="882"
-            loading="lazy"
-            decoding="async"
-          />
+          <picture>
+            <source
+              type="image/webp"
+              srcset="{% static 'financetracker/img/landing/statistics-sm-520.webp' %} 520w, {% static 'financetracker/img/landing/statistics-sm-1040.webp' %} 1040w"
+              sizes="(max-width: 800px) 94vw, 520px"
+            />
+            <img
+              src="{% static 'financetracker/img/landing/statistics-sm-520.jpg' %}"
+              srcset="{% static 'financetracker/img/landing/statistics-sm-520.jpg' %} 520w, {% static 'financetracker/img/landing/statistics-sm-1040.jpg' %} 1040w"
+              sizes="(max-width: 800px) 94vw, 520px"
+              alt="Finance Tracker statistics with monthly overview and category charts"
+              width="520"
+              height="429"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
         </div>
         <figcaption class="visually-hidden">Statistics screenshot</figcaption>
       </figure>
@@ -92,14 +130,23 @@
       </div>
       <figure class="landing-shot" data-landing-shot="converter">
         <div class="landing-shot-frame">
-          <img
-            src="{% static 'financetracker/img/landing/converter-sm.jpg' %}"
-            alt="Finance Tracker currency converter with from, to, and converted amount"
-            width="1093"
-            height="891"
-            loading="lazy"
-            decoding="async"
-          />
+          <picture>
+            <source
+              type="image/webp"
+              srcset="{% static 'financetracker/img/landing/converter-sm-520.webp' %} 520w, {% static 'financetracker/img/landing/converter-sm-1040.webp' %} 1040w"
+              sizes="(max-width: 800px) 94vw, 520px"
+            />
+            <img
+              src="{% static 'financetracker/img/landing/converter-sm-520.jpg' %}"
+              srcset="{% static 'financetracker/img/landing/converter-sm-520.jpg' %} 520w, {% static 'financetracker/img/landing/converter-sm-1040.jpg' %} 1040w"
+              sizes="(max-width: 800px) 94vw, 520px"
+              alt="Finance Tracker currency converter with from, to, and converted amount"
+              width="520"
+              height="424"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
         </div>
         <figcaption class="visually-hidden">Currency converter screenshot</figcaption>
       </figure>

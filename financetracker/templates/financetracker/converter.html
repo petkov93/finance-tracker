@@ -2,6 +2,10 @@
 {% load static money %}
 {% block title %}Currency Converter — Finance Tracker{% endblock %}
 
+{% block extra_head %}
+<script src="{% static 'financetracker/js/money.js' %}"></script>
+{% endblock %}
+
 {% block content %}
 <div class="page-content page-content--converter">
 <div class="page-header animate-in">
