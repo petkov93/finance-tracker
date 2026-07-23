@@ -1,6 +1,10 @@
 {% extends "financetracker/base.html" %}
-{% load money %}
+{% load static money %}
 {% block title %}Statistics — Finance Tracker{% endblock %}
+
+{% block extra_head %}
+<script src="{% static 'financetracker/js/money.js' %}"></script>
+{% endblock %}
 
 {% block content %}
 <div class="page-content">
@@ -93,8 +97,10 @@
 </div>
 
 {% if not conversion_degraded %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
 <script>
   (function () {
+    function bootCharts() {
     const FONT_UI = "'Source Sans 3', system-ui, sans-serif";
     const FONT_MONO = "'IBM Plex Mono', monospace";
     const defaultCurrency = "{{ default_currency }}";
@@ -257,6 +263,13 @@
     }
 
     window.addEventListener("themechange", applyChartTheme);
+    }
+
+    if (window.Chart) {
+      bootCharts();
+    } else {
+      window.addEventListener("DOMContentLoaded", bootCharts);
+    }
   })();
 </script>
 {% endif %}
