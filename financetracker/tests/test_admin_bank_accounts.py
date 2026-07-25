@@ -72,6 +72,19 @@ class BulkAssignTransactionsAdminTests(TestCase):
         )
         self.changelist_url = reverse("admin:financetracker_transaction_changelist")
 
+    def _create_eur_transaction(self, **overrides):
+        defaults = {
+            "user": self.user,
+            "amount": "25.00",
+            "currency": "EUR",
+            "category": self.category,
+            "bank_account": self.cash,
+        }
+        defaults.update(overrides)
+        transaction = create_transaction(**defaults)
+        Transaction.objects.filter(pk=transaction.pk).update(currency="EUR")
+        return transaction
+
     def _post_action(self, transactions, extra=None):
         data = {
             "action": "assign_transactions_to_bank_account",
@@ -82,15 +95,7 @@ class BulkAssignTransactionsAdminTests(TestCase):
         return self.client.post(self.changelist_url, data)
 
     def test_bulk_assign_happy_path(self):
-        transaction = create_transaction(
-            self.user,
-            amount="25.00",
-            currency="EUR",
-            category=self.category,
-            bank_account=self.cash,
-        )
-        Transaction.objects.filter(pk=transaction.pk).update(currency="EUR")
-        transaction.refresh_from_db()
+        transaction = self._create_eur_transaction()
         self.assertEqual(transaction.bank_account_id, self.cash.id)
 
         response = self._post_action([transaction])
@@ -111,14 +116,7 @@ class BulkAssignTransactionsAdminTests(TestCase):
     def test_bulk_assign_form_excludes_bank_accounts_from_other_users(self):
         other_user = create_user(username="other")
         other_cash = ensure_cash_bank_account(other_user)
-        transaction = create_transaction(
-            self.user,
-            amount="25.00",
-            currency="EUR",
-            category=self.category,
-            bank_account=self.cash,
-        )
-        Transaction.objects.filter(pk=transaction.pk).update(currency="EUR")
+        transaction = self._create_eur_transaction()
 
         response = self._post_action(
             [transaction],
@@ -156,13 +154,7 @@ class BulkAssignTransactionsAdminTests(TestCase):
     def test_bulk_assign_rejects_multiple_users(self):
         other_user = create_user(username="other")
         other_cash = ensure_cash_bank_account(other_user)
-        tx1 = create_transaction(
-            self.user,
-            amount="25.00",
-            currency="EUR",
-            category=self.category,
-            bank_account=self.cash,
-        )
+        tx1 = self._create_eur_transaction()
         tx2 = create_transaction(
             other_user,
             amount="30.00",
@@ -170,7 +162,7 @@ class BulkAssignTransactionsAdminTests(TestCase):
             category=self.category,
             bank_account=other_cash,
         )
-        Transaction.objects.filter(pk__in=[tx1.pk, tx2.pk]).update(currency="EUR")
+        Transaction.objects.filter(pk=tx2.pk).update(currency="EUR")
 
         response = self._post_action([tx1, tx2])
         self.assertRedirects(response, self.changelist_url)
@@ -183,14 +175,7 @@ class BulkAssignTransactionsAdminTests(TestCase):
             currency="EUR",
             kind=BankAccount.SAVINGS,
         )
-        transaction = create_transaction(
-            self.user,
-            amount="25.00",
-            currency="EUR",
-            category=self.category,
-            bank_account=self.cash,
-        )
-        Transaction.objects.filter(pk=transaction.pk).update(currency="EUR")
+        transaction = self._create_eur_transaction()
 
         response = self._post_action([transaction])
         self.assertEqual(response.status_code, 200)
@@ -202,6 +187,16 @@ class BulkAssignTransactionsAdminTests(TestCase):
 
 
 class AssignTransactionsServiceTests(TestCase):
+    def _create_eur_transaction(self, user, bank_account):
+        transaction = create_transaction(
+            user,
+            amount="25.00",
+            currency="EUR",
+            bank_account=bank_account,
+        )
+        Transaction.objects.filter(pk=transaction.pk).update(currency="EUR")
+        return transaction
+
     def test_assigns_matching_transactions(self):
         user = create_user()
         cash = ensure_cash_bank_account(user)
@@ -211,13 +206,7 @@ class AssignTransactionsServiceTests(TestCase):
             currency="EUR",
             kind=BankAccount.SAVINGS,
         )
-        transaction = create_transaction(
-            user,
-            amount="25.00",
-            currency="EUR",
-            bank_account=cash,
-        )
-        Transaction.objects.filter(pk=transaction.pk).update(currency="EUR")
+        transaction = self._create_eur_transaction(user, cash)
 
         count = assign_transactions_to_bank_account(
             bank_account=euro_account,
@@ -232,13 +221,7 @@ class AssignTransactionsServiceTests(TestCase):
         other = create_user(username="other")
         cash = ensure_cash_bank_account(owner)
         other_cash = ensure_cash_bank_account(other)
-        transaction = create_transaction(
-            owner,
-            amount="25.00",
-            currency="EUR",
-            bank_account=cash,
-        )
-        Transaction.objects.filter(pk=transaction.pk).update(currency="EUR")
+        transaction = self._create_eur_transaction(owner, cash)
 
         with self.assertRaises(BankAccountError):
             assign_transactions_to_bank_account(

@@ -4,6 +4,7 @@ from django.template.response import TemplateResponse
 from .forms import AssignBankAccountForm
 from .models import BankAccount, Category, InvestmentEntry, IOU, Transaction, UserProfile
 from .services.bank_accounts import (
+    _single_user_id_for_transactions,
     assign_transactions_to_bank_account,
     BankAccountError,
 )
@@ -55,16 +56,11 @@ class TransactionAdmin(admin.ModelAdmin):
 
     @admin.action(description="Assign selected transactions to bank account")
     def assign_transactions_to_bank_account(self, request, queryset):
-        user_ids = set(queryset.values_list("user_id", flat=True))
-        if len(user_ids) > 1:
-            self.message_user(
-                request,
-                "All selected transactions must belong to the same user.",
-                level=messages.ERROR,
-            )
+        try:
+            user_id = _single_user_id_for_transactions(queryset)
+        except BankAccountError as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
             return None
-
-        user_id = user_ids.pop() if user_ids else None
 
         if "apply" in request.POST:
             form = AssignBankAccountForm(request.POST, user_id=user_id)

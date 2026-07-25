@@ -61,6 +61,15 @@ def delete_bank_account(bank_account: BankAccount) -> None:
     bank_account.delete()
 
 
+def _single_user_id_for_transactions(
+    transactions: QuerySet[Transaction],
+) -> int | None:
+    user_ids = set(transactions.values_list("user_id", flat=True))
+    if len(user_ids) > 1:
+        raise BankAccountError("All selected transactions must belong to the same user.")
+    return user_ids.pop() if user_ids else None
+
+
 def assign_transactions_to_bank_account(
     *,
     bank_account: BankAccount,
@@ -74,10 +83,8 @@ def assign_transactions_to_bank_account(
     if not transactions.exists():
         return 0
 
-    user_ids = set(transactions.values_list("user_id", flat=True))
-    if len(user_ids) != 1:
-        raise BankAccountError("All selected transactions must belong to the same user.")
-    if bank_account.user_id != user_ids.pop():
+    user_id = _single_user_id_for_transactions(transactions)
+    if user_id is None or bank_account.user_id != user_id:
         raise BankAccountError(
             "Bank account must belong to the same user as the transactions."
         )
