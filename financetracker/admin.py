@@ -14,7 +14,7 @@ from .services.bank_accounts import (
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ["user", "default_currency", "theme"]
     search_fields = ["user__username"]
-    raw_id_fields = ["user"]
+    autocomplete_fields = ["user"]
 
 
 @admin.register(BankAccount)
@@ -22,7 +22,7 @@ class BankAccountAdmin(admin.ModelAdmin):
     list_display = ["name", "currency", "kind", "is_cash", "user"]
     list_filter = ["is_cash", "kind", "currency"]
     search_fields = ["name", "user__username"]
-    raw_id_fields = ["user"]
+    autocomplete_fields = ["user"]
 
     def has_delete_permission(self, request, obj=None):
         if obj is not None and obj.is_cash:
@@ -50,8 +50,8 @@ class TransactionAdmin(admin.ModelAdmin):
         "description",
     ]
     list_filter = ["type", "category", "date"]
-    search_fields = ["description"]
-    raw_id_fields = ["user", "category", "bank_account"]
+    search_fields = ["description", "user__username"]
+    autocomplete_fields = ["user", "category", "bank_account"]
     actions = ["assign_transactions_to_bank_account"]
 
     @admin.action(description="Assign selected transactions to bank account")
@@ -103,8 +103,8 @@ class TransactionAdmin(admin.ModelAdmin):
 class InvestmentEntryAdmin(admin.ModelAdmin):
     list_display = ["date", "type", "amount", "user", "description"]
     list_filter = ["type", "date"]
-    search_fields = ["description"]
-    raw_id_fields = ["user"]
+    search_fields = ["description", "user__username"]
+    autocomplete_fields = ["user"]
 
 
 @admin.register(IOU)
@@ -119,5 +119,5 @@ class IOUAdmin(admin.ModelAdmin):
         "user",
     ]
     list_filter = ["direction", "status"]
-    search_fields = ["counterparty_name"]
-    raw_id_fields = ["user", "opening_transaction"]
+    search_fields = ["counterparty_name", "user__username"]
+    autocomplete_fields = ["user", "opening_transaction"]

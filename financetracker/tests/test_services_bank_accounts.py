@@ -80,7 +80,7 @@ class EnsureUserBankAccountsTests(TestCase):
 
         self.assertEqual(len(accounts), 1)
         self.assertTrue(accounts[0].is_cash)
-        self.assertEqual(str(accounts[0]), "Cash (CZK)")
+        self.assertEqual(str(accounts[0]), f"Cash (CZK) — {user.username}")
 
 
 class CashDeleteGuardTests(TestCase):

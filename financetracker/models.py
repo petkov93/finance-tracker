@@ -132,7 +132,7 @@ class BankAccount(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.name} ({self.currency})"
+        return f"{self.name} ({self.currency}) — {self.user.username}"
 
     def delete(self, using=None, keep_parents=False):
         if self.is_cash:

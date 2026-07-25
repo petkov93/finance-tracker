@@ -54,6 +54,18 @@ class BankAccountAdminTests(TestCase):
 
         self.assertTrue(self.admin.has_delete_permission(self.request, savings))
 
+    def test_user_field_uses_autocomplete(self):
+        self.assertEqual(self.admin.autocomplete_fields, ["user"])
+
+
+class TransactionAdminConfigTests(TestCase):
+    def test_related_fields_use_autocomplete(self):
+        admin = TransactionAdmin(Transaction, AdminSite())
+        self.assertEqual(
+            admin.autocomplete_fields,
+            ["user", "category", "bank_account"],
+        )
+
 
 class BulkAssignTransactionsAdminTests(TestCase):
     def setUp(self):
