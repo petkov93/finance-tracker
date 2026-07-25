@@ -58,7 +58,4 @@ def assert_transaction_currency_matches_bank_account(
 def delete_bank_account(bank_account: BankAccount) -> None:
     if bank_account.is_cash:
         raise BankAccountError("Cash cannot be deleted.")
-    try:
-        bank_account.delete()
-    except ValueError as exc:
-        raise BankAccountError(str(exc)) from exc
+    bank_account.delete()

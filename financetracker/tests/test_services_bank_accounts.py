@@ -7,6 +7,7 @@ from financetracker.services.bank_accounts import (
     CASH_BANK_ACCOUNT_NAME,
     BankAccountError,
     assert_transaction_currency_matches_bank_account,
+    bank_accounts_for_user,
     delete_bank_account,
     ensure_cash_bank_account,
     ensure_user_bank_accounts,
@@ -71,6 +72,16 @@ class EnsureUserBankAccountsTests(TestCase):
         assigned.refresh_from_db()
         self.assertEqual(assigned.bank_account_id, other.id)
 
+    def test_bank_accounts_for_user_ensures_cash_and_lists_accounts(self):
+        user = create_user()
+        ensure_user_profile(user)
+
+        accounts = list(bank_accounts_for_user(user))
+
+        self.assertEqual(len(accounts), 1)
+        self.assertTrue(accounts[0].is_cash)
+        self.assertEqual(str(accounts[0]), "Cash (CZK)")
+
 
 class CashDeleteGuardTests(TestCase):
     def test_cash_cannot_be_deleted_via_service(self):
@@ -90,6 +101,45 @@ class CashDeleteGuardTests(TestCase):
             cash.delete()
 
         self.assertTrue(BankAccount.objects.filter(pk=cash.pk).exists())
+
+    def test_cash_cannot_be_deleted_via_queryset(self):
+        user = create_user()
+        cash = ensure_cash_bank_account(user)
+
+        with self.assertRaises(ValueError):
+            BankAccount.objects.filter(pk=cash.pk).delete()
+
+        self.assertTrue(BankAccount.objects.filter(pk=cash.pk).exists())
+
+    def test_non_cash_bank_account_can_be_deleted(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        savings = BankAccount.objects.create(
+            user=user,
+            name="Savings",
+            currency="CZK",
+            kind=BankAccount.SAVINGS,
+            is_cash=False,
+        )
+
+        delete_bank_account(savings)
+
+        self.assertFalse(BankAccount.objects.filter(pk=savings.pk).exists())
+
+    def test_non_cash_bank_account_can_be_deleted_via_queryset(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        savings = BankAccount.objects.create(
+            user=user,
+            name="Savings",
+            currency="CZK",
+            kind=BankAccount.SAVINGS,
+            is_cash=False,
+        )
+
+        BankAccount.objects.filter(pk=savings.pk).delete()
+
+        self.assertFalse(BankAccount.objects.filter(pk=savings.pk).exists())
 
 
 class TransactionCurrencyMatchTests(TestCase):
