@@ -119,16 +119,7 @@ class IouServiceTests(TestCase):
             currency="CZK",
         )
 
-        from financetracker.services.display_conversion import convert_for_display
-
-        display = convert_for_display(
-            Transaction.objects.filter(user=self.user),
-            "CZK",
-        )
-        adjustment = compute_open_iou_adjustment(self.user, "CZK")
-
-        available = display.balance
-        total = available + adjustment.net_adjustment
+        available, total = self._balances()
 
         self.assertEqual(available, Decimal("500.00"))
         self.assertEqual(total, Decimal("1000.00"))
@@ -271,16 +262,7 @@ class IouServiceTests(TestCase):
         self.assertEqual(repayment.transaction.category.name, LENDING_CATEGORY_NAME)
         self.assertIn("Jamie", repayment.transaction.description)
 
-        from financetracker.services.display_conversion import convert_for_display
-
-        display = convert_for_display(
-            Transaction.objects.filter(user=self.user),
-            "CZK",
-        )
-        adjustment = compute_open_iou_adjustment(self.user, "CZK")
-
-        available = display.balance
-        total = available + adjustment.net_adjustment
+        available, total = self._balances()
 
         self.assertEqual(available, Decimal("700.00"))
         self.assertEqual(total, Decimal("1000.00"))
@@ -326,16 +308,7 @@ class IouServiceTests(TestCase):
         self.assertEqual(repayment.transaction.type, Transaction.EXPENSE)
         self.assertEqual(repayment.transaction.category.name, BORROWING_CATEGORY_NAME)
 
-        from financetracker.services.display_conversion import convert_for_display
-
-        display = convert_for_display(
-            Transaction.objects.filter(user=self.user),
-            "CZK",
-        )
-        adjustment = compute_open_iou_adjustment(self.user, "CZK")
-
-        available = display.balance
-        total = available + adjustment.net_adjustment
+        available, total = self._balances()
 
         self.assertEqual(available, Decimal("1300.00"))
         self.assertEqual(total, Decimal("1000.00"))
@@ -352,14 +325,11 @@ class IouServiceTests(TestCase):
             record_repayment(iou, amount=Decimal("500.01"))
 
     def _balances(self):
-        from financetracker.services.display_conversion import convert_for_display
+        from financetracker.services.bank_accounts import compute_available_balance
 
-        display = convert_for_display(
-            Transaction.objects.filter(user=self.user),
-            "CZK",
-        )
+        available_result = compute_available_balance(self.user, "CZK")
         adjustment = compute_open_iou_adjustment(self.user, "CZK")
-        available = display.balance
+        available = available_result.available
         total = available + adjustment.net_adjustment
         return available, total
 
@@ -528,16 +498,7 @@ class IouServiceTests(TestCase):
             currency="CZK",
         )
 
-        from financetracker.services.display_conversion import convert_for_display
-
-        display = convert_for_display(
-            Transaction.objects.filter(user=self.user),
-            "CZK",
-        )
-        adjustment = compute_open_iou_adjustment(self.user, "CZK")
-
-        available = display.balance
-        total = available + adjustment.net_adjustment
+        available, total = self._balances()
 
         self.assertEqual(available, Decimal("1500.00"))
         self.assertEqual(total, Decimal("1000.00"))
@@ -765,6 +726,7 @@ class IouSpendingExclusionTests(TestCase):
             currency="CZK",
         )
 
+        from financetracker.services.bank_accounts import compute_available_balance
         from financetracker.services.display_conversion import convert_for_display
         from financetracker.services.iou import iou_linked_transaction_ids
 
@@ -777,10 +739,11 @@ class IouSpendingExclusionTests(TestCase):
             spending_totals_transactions=spending_txs,
             iou_linked_transaction_ids=iou_linked_transaction_ids(self.user),
         )
+        available = compute_available_balance(self.user, "CZK").available
 
         self.assertEqual(display.total_income, Decimal("1000.00"))
         self.assertEqual(display.total_expense, Decimal("0"))
-        self.assertEqual(display.balance, Decimal("500.00"))
+        self.assertEqual(available, Decimal("500.00"))
 
 
 class UpdateRepaymentTests(TestCase):

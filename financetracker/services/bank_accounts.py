@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -7,6 +9,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from financetracker.models import BankAccount, Transaction, ensure_user_profile
+from financetracker.services.currency import get_rates
 
 CASH_BANK_ACCOUNT_NAME = "Cash"
 OPENING_BALANCE_DESCRIPTION = "Opening balance"
@@ -14,6 +17,13 @@ OPENING_BALANCE_DESCRIPTION = "Opening balance"
 
 class BankAccountError(Exception):
     """Raised when a Bank account action would break domain invariants."""
+
+
+@dataclass(frozen=True)
+class AvailableBalanceResult:
+    available: Decimal | None
+    conversion_degraded: bool
+    rates_stale_date: date | None = None
 
 
 def ensure_cash_bank_account(user: User) -> BankAccount:
@@ -116,6 +126,67 @@ def bank_account_balance(bank_account: BankAccount) -> Decimal:
         ),
     )
     return aggregates["income"] - aggregates["expense"]
+
+
+def compute_available_balance(
+    user: User,
+    default_currency: str | None = None,
+) -> AvailableBalanceResult:
+    """Available balance: Display-converted sum of Bank account balances.
+
+    Cross-currency Bank accounts use today's latest rate (same policy as open IOUs).
+    """
+    if default_currency is None:
+        default_currency = ensure_user_profile(user).default_currency
+
+    ensure_user_bank_accounts(user)
+    accounts = list(BankAccount.objects.filter(user=user))
+    account_balances = [
+        (bank_account_balance(account), account.currency) for account in accounts
+    ]
+
+    rate_keys: set[tuple[str, str, date]] = set()
+    for balance, currency in account_balances:
+        if currency != default_currency and balance != 0:
+            rate_keys.add((currency, default_currency, date.today()))
+
+    rates = get_rates(rate_keys) if rate_keys else {}
+
+    available = Decimal("0")
+    conversion_degraded = False
+    rates_stale_date: date | None = None
+
+    for balance, currency in account_balances:
+        if balance == 0:
+            continue
+        if currency == default_currency:
+            available += balance
+            continue
+
+        result = rates.get((currency, default_currency, date.today()))
+        if result is None:
+            conversion_degraded = True
+            continue
+
+        available += balance * result.rate
+        if result.stale_date is not None:
+            rates_stale_date = (
+                max(rates_stale_date, result.stale_date)
+                if rates_stale_date is not None
+                else result.stale_date
+            )
+
+    if conversion_degraded:
+        return AvailableBalanceResult(
+            available=None,
+            conversion_degraded=True,
+        )
+
+    return AvailableBalanceResult(
+        available=available,
+        conversion_degraded=False,
+        rates_stale_date=rates_stale_date,
+    )
 
 
 def is_opening_balance_transaction(transaction: Transaction) -> bool:
