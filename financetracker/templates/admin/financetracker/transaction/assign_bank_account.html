@@ -1,0 +1,27 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block content %}
+<div id="content-main">
+  <h1>Assign transactions to bank account</h1>
+
+  <p>
+    You are about to assign {{ queryset.count }} transaction(s) to a bank account.
+    All selected transactions must belong to the same user, and their currency must
+    match the chosen bank account currency.
+  </p>
+
+  <form action="" method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <input type="hidden" name="action" value="assign_transactions_to_bank_account">
+    {% for item in queryset %}
+      <input type="hidden" name="{{ action_checkbox_name }}" value="{{ item.pk }}">
+    {% endfor %}
+    <div class="submit-row">
+      <input type="submit" name="apply" class="default" value="Assign">
+      <a href="" class="closelink">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

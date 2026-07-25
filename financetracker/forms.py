@@ -203,6 +203,23 @@ class TransactionForm(forms.ModelForm):
         return cleaned
 
 
+class AssignBankAccountForm(forms.Form):
+    bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        required=True,
+        label="Bank account",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    def __init__(self, *args, user_id=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        queryset = BankAccount.objects.all()
+        if user_id is not None:
+            queryset = queryset.filter(user_id=user_id)
+        self.fields["bank_account"].queryset = queryset
+
+
 class InvestmentEntryForm(forms.ModelForm):
     class Meta:
         model = InvestmentEntry

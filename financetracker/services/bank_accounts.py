@@ -59,3 +59,41 @@ def delete_bank_account(bank_account: BankAccount) -> None:
     if bank_account.is_cash:
         raise BankAccountError("Cash cannot be deleted.")
     bank_account.delete()
+
+
+def _single_user_id_for_transactions(
+    transactions: QuerySet[Transaction],
+) -> int | None:
+    user_ids = set(transactions.values_list("user_id", flat=True))
+    if len(user_ids) > 1:
+        raise BankAccountError("All selected transactions must belong to the same user.")
+    return user_ids.pop() if user_ids else None
+
+
+def assign_transactions_to_bank_account(
+    *,
+    bank_account: BankAccount,
+    transactions: QuerySet[Transaction],
+) -> int:
+    """Bulk-assign a queryset of transactions to a Bank account.
+
+    Validates that all transactions belong to the bank account's user and that
+    each transaction's currency matches the bank account's currency.
+    """
+    if not transactions.exists():
+        return 0
+
+    user_id = _single_user_id_for_transactions(transactions)
+    if user_id is None or bank_account.user_id != user_id:
+        raise BankAccountError(
+            "Bank account must belong to the same user as the transactions."
+        )
+
+    mismatched_count = transactions.exclude(currency=bank_account.currency).count()
+    if mismatched_count:
+        raise BankAccountError(
+            f"{mismatched_count} transaction(s) have a currency that does not match "
+            f"the bank account currency ({bank_account.currency})."
+        )
+
+    return transactions.update(bank_account=bank_account)
