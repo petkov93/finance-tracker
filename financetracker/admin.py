@@ -56,6 +56,10 @@ class TransactionAdmin(admin.ModelAdmin):
 
     @admin.action(description="Assign selected transactions to bank account")
     def assign_transactions_to_bank_account(self, request, queryset):
+        if not queryset.exists():
+            self.message_user(request, "No transactions selected.", level=messages.WARNING)
+            return None
+
         try:
             user_id = _single_user_id_for_transactions(queryset)
         except BankAccountError as exc:

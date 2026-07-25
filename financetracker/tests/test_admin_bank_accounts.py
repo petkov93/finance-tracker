@@ -1,9 +1,12 @@
+from unittest.mock import MagicMock, patch
+
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth.models import User
+from django.contrib.messages.storage.fallback import FallbackStorage
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 
-from financetracker.admin import BankAccountAdmin
+from financetracker.admin import BankAccountAdmin, TransactionAdmin
 from financetracker.models import BankAccount, Transaction
 from financetracker.services.bank_accounts import (
     assign_transactions_to_bank_account,
@@ -55,6 +58,7 @@ class BankAccountAdminTests(TestCase):
 class BulkAssignTransactionsAdminTests(TestCase):
     def setUp(self):
         self.client = Client()
+        self.factory = RequestFactory()
         self.staff = User.objects.create_superuser(
             username="staff",
             email="staff@example.com",
@@ -163,9 +167,26 @@ class BulkAssignTransactionsAdminTests(TestCase):
             bank_account=other_cash,
         )
         Transaction.objects.filter(pk=tx2.pk).update(currency="EUR")
+        original_bank_accounts = {tx1.pk: tx1.bank_account_id, tx2.pk: tx2.bank_account_id}
 
         response = self._post_action([tx1, tx2])
         self.assertRedirects(response, self.changelist_url)
+        tx1.refresh_from_db()
+        tx2.refresh_from_db()
+        self.assertEqual(tx1.bank_account_id, original_bank_accounts[tx1.pk])
+        self.assertEqual(tx2.bank_account_id, original_bank_accounts[tx2.pk])
+
+    def test_action_rejects_empty_selection(self):
+        admin = TransactionAdmin(Transaction, AdminSite())
+        request = self.factory.get(self.changelist_url)
+        request.user = self.staff
+        request.session = self.client.session
+        request._messages = FallbackStorage(request)
+
+        response = admin.assign_transactions_to_bank_account(
+            request, Transaction.objects.none()
+        )
+        self.assertIsNone(response)
 
     def test_bulk_assign_form_filters_bank_accounts_by_user(self):
         other_user = create_user(username="other")
@@ -184,6 +205,36 @@ class BulkAssignTransactionsAdminTests(TestCase):
         self.assertIn(self.euro_account.pk, account_ids)
         self.assertIn(self.cash.pk, account_ids)
         self.assertNotIn(other_account.pk, account_ids)
+
+    def test_action_handles_bank_account_user_mismatch(self):
+        other_user = create_user(username="other")
+        other_cash = ensure_cash_bank_account(other_user)
+        transaction = self._create_eur_transaction()
+
+        admin = TransactionAdmin(Transaction, AdminSite())
+        request = self.factory.post(
+            self.changelist_url,
+            {
+                "apply": "Assign",
+                "bank_account": other_cash.pk,
+                "_selected_action": [transaction.pk],
+            },
+        )
+        request.user = self.staff
+        request.session = self.client.session
+        request._messages = FallbackStorage(request)
+
+        fake_form = MagicMock()
+        fake_form.is_valid.return_value = True
+        fake_form.cleaned_data = {"bank_account": other_cash}
+
+        with patch("financetracker.admin.AssignBankAccountForm", return_value=fake_form):
+            response = admin.assign_transactions_to_bank_account(
+                request, Transaction.objects.filter(pk=transaction.pk)
+            )
+        self.assertIsNone(response)
+        transaction.refresh_from_db()
+        self.assertEqual(transaction.bank_account_id, self.cash.id)
 
 
 class AssignTransactionsServiceTests(TestCase):
@@ -245,11 +296,12 @@ class AssignTransactionsServiceTests(TestCase):
             bank_account=cash,
         )
 
-        with self.assertRaises(BankAccountError):
+        with self.assertRaises(BankAccountError) as cm:
             assign_transactions_to_bank_account(
                 bank_account=euro_account,
                 transactions=Transaction.objects.filter(pk=transaction.pk),
             )
+        self.assertIn("EUR", str(cm.exception))
 
     def test_rejects_mixed_user_selection(self):
         user_a = create_user(username="a")

@@ -89,7 +89,11 @@ def assign_transactions_to_bank_account(
             "Bank account must belong to the same user as the transactions."
         )
 
-    if transactions.exclude(currency=bank_account.currency).exists():
-        raise BankAccountError("Transaction currency must match the Bank account currency.")
+    mismatched_count = transactions.exclude(currency=bank_account.currency).count()
+    if mismatched_count:
+        raise BankAccountError(
+            f"{mismatched_count} transaction(s) have a currency that does not match "
+            f"the bank account currency ({bank_account.currency})."
+        )
 
     return transactions.update(bank_account=bank_account)
