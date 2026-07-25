@@ -22,6 +22,7 @@ from .models import (
     UserProfile,
     ensure_user_profile,
 )
+from .services.bank_accounts import ensure_user_bank_accounts
 from .services.theme_constants import THEME_CHOICES
 from .services.theme_preference import for_request, set_preference
 from .forms import (
@@ -86,6 +87,7 @@ def login_view(request):
         if form.is_valid():
             user = form.get_user()
             ensure_user_profile(user)
+            ensure_user_bank_accounts(user)
             login(request, user)
             next_url = request.GET.get("next")
             if next_url and url_has_allowed_host_and_scheme(
@@ -136,6 +138,7 @@ def register_view(request):
                     user=user,
                     default_currency=form.cleaned_data["default_currency"],
                 )
+                ensure_user_bank_accounts(user)
             login(request, user)
             messages.success(request, f"Welcome, {user.username}! Your account has been created.")
             return redirect("dashboard")
@@ -244,6 +247,7 @@ def add_transaction(request):
     if request.method == "POST":
         form = TransactionForm(
             request.POST,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
             default_currency=currency_context["default_currency"],
         )
@@ -259,6 +263,7 @@ def add_transaction(request):
                 "date": timezone.now().date(),
                 "currency": currency_context["default_currency"],
             },
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
             default_currency=currency_context["default_currency"],
         )
@@ -302,6 +307,7 @@ def edit_transaction(request, pk):
         form = TransactionForm(
             request.POST,
             instance=transaction,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
         )
         if form.is_valid():
@@ -320,6 +326,7 @@ def edit_transaction(request, pk):
     else:
         form = TransactionForm(
             instance=transaction,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
         )
     return render(request, "financetracker/add_transaction.html", {

@@ -5,6 +5,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import Transaction, UserProfile, ensure_user_profile
+from financetracker.services.bank_accounts import ensure_cash_bank_account
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_category,
@@ -28,12 +29,14 @@ class TransactionCurrencyViewsTests(TestCase):
         self.supported_patcher.start()
         self.addCleanup(self.supported_patcher.stop)
         ensure_user_profile(self.user)
+        self.cash = ensure_cash_bank_account(self.user)
 
     def _transaction_payload(self, **overrides):
         payload = {
             "type": Transaction.EXPENSE,
             "amount": "42.00",
             "currency": "CZK",
+            "bank_account": self.cash.pk,
             "category": self.category.pk,
             "description": "Test",
             "date": "2025-01-15",
@@ -43,6 +46,8 @@ class TransactionCurrencyViewsTests(TestCase):
 
     def test_add_transaction_defaults_to_profile_currency(self):
         UserProfile.objects.filter(user=self.user).update(default_currency="EUR")
+        self.cash.currency = "EUR"
+        self.cash.save(update_fields=["currency"])
 
         response = self.client.get(reverse("add_transaction"))
         self.assertEqual(response.status_code, 200)
@@ -57,6 +62,8 @@ class TransactionCurrencyViewsTests(TestCase):
         self.assertEqual(transaction.currency, "EUR")
 
     def test_add_transaction_with_explicit_currency(self):
+        self.cash.currency = "USD"
+        self.cash.save(update_fields=["currency"])
         response = self.client.post(
             reverse("add_transaction"),
             self._transaction_payload(currency="USD", description="Salary"),
@@ -71,8 +78,11 @@ class TransactionCurrencyViewsTests(TestCase):
             amount=Decimal("25.00"),
             description="Coffee",
             category=self.category,
+            bank_account=self.cash,
         )
         Transaction.objects.filter(pk=transaction.pk).update(currency="CZK")
+        self.cash.currency = "EUR"
+        self.cash.save(update_fields=["currency"])
 
         response = self.client.get(reverse("edit_transaction", args=[transaction.pk]))
         self.assertEqual(response.status_code, 200)

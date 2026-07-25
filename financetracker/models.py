@@ -95,6 +95,51 @@ class Category(models.Model):
         return self.name
 
 
+class BankAccountQuerySet(models.QuerySet):
+    def delete(self):
+        if self.filter(is_cash=True).exists():
+            raise ValueError("Cash cannot be deleted.")
+        return super().delete()
+
+
+class BankAccount(models.Model):
+    CHECKING = "checking"
+    SAVINGS = "savings"
+    CREDIT = "credit"
+    KIND_CHOICES = [
+        (CHECKING, "Checking"),
+        (SAVINGS, "Savings"),
+        (CREDIT, "Credit"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="bank_accounts")
+    name = models.CharField(max_length=100)
+    currency = models.CharField(max_length=3)
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, blank=True, default="")
+    is_cash = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = BankAccountQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-is_cash", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_cash=True),
+                name="unique_cash_bank_account_per_user",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.currency})"
+
+    def delete(self, using=None, keep_parents=False):
+        if self.is_cash:
+            raise ValueError("Cash cannot be deleted.")
+        return super().delete(using=using, keep_parents=keep_parents)
+
+
 class Transaction(models.Model):
     INCOME = "income"
     EXPENSE = "expense"
@@ -104,6 +149,11 @@ class Transaction(models.Model):
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transactions")
+    bank_account = models.ForeignKey(
+        BankAccount,
+        on_delete=models.PROTECT,
+        related_name="transactions",
+    )
     type = models.CharField(max_length=10, choices=TYPE_CHOICES)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     currency = models.CharField(max_length=3, default=DEFAULT_PROFILE_CURRENCY)
