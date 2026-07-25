@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 from .models import (
+    BankAccount,
     Transaction,
     Category,
     InvestmentEntry,
@@ -22,10 +23,24 @@ from .models import (
     UserProfile,
     ensure_user_profile,
 )
-from .services.bank_accounts import ensure_user_bank_accounts
+from .services.bank_accounts import (
+    BankAccountError,
+    bank_account_balance,
+    bank_account_is_empty,
+    bank_accounts_for_user,
+    create_bank_account,
+    delete_bank_account,
+    ensure_user_bank_accounts,
+    exclude_from_spending_statistics,
+    is_opening_balance_transaction,
+    opening_balance_transaction_ids,
+    rename_bank_account,
+)
 from .services.theme_constants import THEME_CHOICES
 from .services.theme_preference import for_request, set_preference
 from .forms import (
+    BankAccountCreateForm,
+    BankAccountRenameForm,
     CurrencyConverterForm,
     CustomPasswordChangeForm,
     DefaultCurrencyForm,
@@ -60,7 +75,6 @@ from .services.iou import (
     create_payable,
     create_receivable,
     delete_transaction_with_iou_effects,
-    exclude_iou_linked_transactions,
     guard_opening_transaction_amount_currency,
     iou_linked_transaction_ids,
     is_iou_linked_transaction,
@@ -171,8 +185,11 @@ def dashboard(request):
     
     profile = ensure_user_profile(request.user)
     all_transactions = Transaction.objects.filter(user=request.user)
-    spending_transactions = exclude_iou_linked_transactions(all_transactions)
-    linked_ids = iou_linked_transaction_ids(request.user)
+    spending_transactions = exclude_from_spending_statistics(all_transactions)
+    linked_ids = (
+        iou_linked_transaction_ids(request.user)
+        | opening_balance_transaction_ids(request.user)
+    )
     display = convert_for_display(
         qs,
         profile.default_currency,
@@ -277,6 +294,12 @@ def add_transaction(request):
 @login_required
 def edit_transaction(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    if is_opening_balance_transaction(transaction):
+        messages.error(
+            request,
+            "Opening balance cannot be edited.",
+        )
+        return redirect("dashboard")
     if is_iou_linked_transaction(transaction):
         messages.error(
             request,
@@ -341,6 +364,12 @@ def edit_transaction(request, pk):
 @require_POST
 def delete_transaction(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    if is_opening_balance_transaction(transaction):
+        messages.error(
+            request,
+            "Opening balance cannot be deleted.",
+        )
+        return redirect("dashboard")
     if is_iou_linked_transaction(transaction):
         messages.error(
             request,
@@ -383,7 +412,7 @@ def statistics(request):
         from_date, to_date = to_date, from_date
 
     qs_filtered = qs.filter(date__gte=from_date, date__lte=to_date)
-    spending_qs = exclude_iou_linked_transactions(qs_filtered)
+    spending_qs = exclude_from_spending_statistics(qs_filtered)
 
     profile = ensure_user_profile(request.user)
     display = convert_for_display(
@@ -507,6 +536,104 @@ def delete_investment(request, pk):
     entry.delete()
     messages.success(request, "Investment entry deleted.")
     return redirect("investments")
+
+
+@login_required
+def bank_accounts(request):
+    accounts = bank_accounts_for_user(request.user)
+    account_rows = [
+        {
+            "account": account,
+            "balance": bank_account_balance(account),
+            "can_delete": (not account.is_cash and bank_account_is_empty(account)),
+        }
+        for account in accounts
+    ]
+    return render(
+        request,
+        "financetracker/bank_accounts.html",
+        {"account_rows": account_rows},
+    )
+
+
+@login_required
+def add_bank_account(request):
+    currency_context = _transaction_currency_context(request)
+    if currency_context is None:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/add_bank_account.html",
+            {"form": None, "currency_error": True},
+            status=200,
+        )
+
+    if request.method == "POST":
+        form = BankAccountCreateForm(
+            request.POST,
+            currency_choices=currency_context["currency_choices"],
+        )
+        if form.is_valid():
+            create_bank_account(
+                request.user,
+                name=form.cleaned_data["name"],
+                currency=form.cleaned_data["currency"],
+                kind=form.cleaned_data["kind"],
+                opening_balance=form.cleaned_data["opening_balance"],
+            )
+            messages.success(request, "Bank account created.")
+            return redirect("bank_accounts")
+    else:
+        form = BankAccountCreateForm(
+            currency_choices=currency_context["currency_choices"],
+            default_currency=currency_context["default_currency"],
+        )
+
+    return render(
+        request,
+        "financetracker/add_bank_account.html",
+        {"form": form},
+    )
+
+
+@login_required
+def edit_bank_account(request, pk):
+    account = get_object_or_404(
+        BankAccount,
+        pk=pk,
+        user=request.user,
+        is_cash=False,
+    )
+    if request.method == "POST":
+        form = BankAccountRenameForm(request.POST)
+        if form.is_valid():
+            rename_bank_account(account, form.cleaned_data["name"])
+            messages.success(request, "Bank account renamed.")
+            return redirect("bank_accounts")
+    else:
+        form = BankAccountRenameForm(initial={"name": account.name})
+
+    return render(
+        request,
+        "financetracker/edit_bank_account.html",
+        {"form": form, "account": account},
+    )
+
+
+@login_required
+@require_POST
+def delete_bank_account_view(request, pk):
+    account = get_object_or_404(BankAccount, pk=pk, user=request.user)
+    try:
+        delete_bank_account(account)
+    except BankAccountError as exc:
+        messages.error(request, str(exc))
+        return redirect("bank_accounts")
+    messages.success(request, "Bank account deleted.")
+    return redirect("bank_accounts")
 
 
 @login_required
@@ -855,7 +982,7 @@ def settings_view(request):
         "currency_form": currency_form,
         "theme_choices": THEME_CHOICES,
         "selected_theme": for_request(request),
-        "transaction_count": exclude_iou_linked_transactions(
+        "transaction_count": exclude_from_spending_statistics(
             Transaction.objects.filter(user=request.user)
         ).count(),
         "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
@@ -869,7 +996,7 @@ def settings_view(request):
 @login_required
 @require_POST
 def clear_all_transactions(request):
-    qs = exclude_iou_linked_transactions(Transaction.objects.filter(user=request.user))
+    qs = exclude_from_spending_statistics(Transaction.objects.filter(user=request.user))
     count = qs.count()
     qs.delete()
     messages.success(request, f"Deleted all {count} transaction(s).")

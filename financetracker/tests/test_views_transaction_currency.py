@@ -4,7 +4,7 @@ from unittest.mock import patch
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from financetracker.models import Transaction, UserProfile, ensure_user_profile
+from financetracker.models import BankAccount, Transaction, UserProfile, ensure_user_profile
 from financetracker.services.bank_accounts import ensure_cash_bank_account
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
@@ -44,10 +44,14 @@ class TransactionCurrencyViewsTests(TestCase):
         payload.update(overrides)
         return payload
 
+    def _set_cash_currency(self, currency):
+        """Test fixture helper — Bank account currency is immutable via model save."""
+        BankAccount.objects.filter(pk=self.cash.pk).update(currency=currency)
+        self.cash.refresh_from_db()
+
     def test_add_transaction_defaults_to_profile_currency(self):
         UserProfile.objects.filter(user=self.user).update(default_currency="EUR")
-        self.cash.currency = "EUR"
-        self.cash.save(update_fields=["currency"])
+        self._set_cash_currency("EUR")
 
         response = self.client.get(reverse("add_transaction"))
         self.assertEqual(response.status_code, 200)
@@ -62,8 +66,7 @@ class TransactionCurrencyViewsTests(TestCase):
         self.assertEqual(transaction.currency, "EUR")
 
     def test_add_transaction_with_explicit_currency(self):
-        self.cash.currency = "USD"
-        self.cash.save(update_fields=["currency"])
+        self._set_cash_currency("USD")
         response = self.client.post(
             reverse("add_transaction"),
             self._transaction_payload(currency="USD", description="Salary"),
@@ -81,8 +84,7 @@ class TransactionCurrencyViewsTests(TestCase):
             bank_account=self.cash,
         )
         Transaction.objects.filter(pk=transaction.pk).update(currency="CZK")
-        self.cash.currency = "EUR"
-        self.cash.save(update_fields=["currency"])
+        self._set_cash_currency("EUR")
 
         response = self.client.get(reverse("edit_transaction", args=[transaction.pk]))
         self.assertEqual(response.status_code, 200)

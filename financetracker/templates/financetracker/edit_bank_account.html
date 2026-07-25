@@ -1,0 +1,34 @@
+{% extends "financetracker/base.html" %}
+{% block title %}Rename Bank account — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Bank accounts</p>
+    <h1 class="page-title">Rename {{ account.name }}</h1>
+  </div>
+  <a href="{% url 'bank_accounts' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+<div class="form-card">
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+      {{ form.name }}
+      {% if form.name.errors %}<div class="form-error">{{ form.name.errors.0 }}</div>{% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Bank account currency</label>
+      <p class="form-hint">{{ account.currency }} (locked after create)</p>
+    </div>
+
+    <div class="form-actions">
+      <a href="{% url 'bank_accounts' %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save name</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

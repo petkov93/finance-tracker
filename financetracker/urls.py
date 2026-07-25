@@ -15,6 +15,18 @@ urlpatterns = [
     path("investments/add/", views.add_investment, name="add_investment"),
     path("investments/edit/<int:pk>/", views.edit_investment, name="edit_investment"),
     path("investments/delete/<int:pk>/", views.delete_investment, name="delete_investment"),
+    path("bank-accounts/", views.bank_accounts, name="bank_accounts"),
+    path("bank-accounts/add/", views.add_bank_account, name="add_bank_account"),
+    path(
+        "bank-accounts/<int:pk>/edit/",
+        views.edit_bank_account,
+        name="edit_bank_account",
+    ),
+    path(
+        "bank-accounts/<int:pk>/delete/",
+        views.delete_bank_account_view,
+        name="delete_bank_account",
+    ),
     path("ious/", views.ious, name="ious"),
     path("ious/lend/", views.add_lend, name="add_lend"),
     path("ious/borrow/", views.add_borrow, name="add_borrow"),

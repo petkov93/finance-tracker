@@ -1,0 +1,53 @@
+{% extends "financetracker/base.html" %}
+{% block title %}Add Bank account — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Bank accounts</p>
+    <h1 class="page-title">Add Bank account</h1>
+  </div>
+  <a href="{% url 'bank_accounts' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+<div class="form-card">
+  {% if currency_error %}
+    <p class="form-error">Couldn't load supported currencies right now. Try again in a moment.</p>
+  {% elif form %}
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+      {{ form.name }}
+      {% if form.name.errors %}<div class="form-error">{{ form.name.errors.0 }}</div>{% endif %}
+    </div>
+
+    <div class="filter-grid">
+      <div class="form-group">
+        <label class="form-label" for="{{ form.currency.id_for_label }}">{{ form.currency.label }}</label>
+        {{ form.currency }}
+        {% if form.currency.errors %}<div class="form-error">{{ form.currency.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="{{ form.kind.id_for_label }}">{{ form.kind.label }} <span class="text-muted">(optional)</span></label>
+        {{ form.kind }}
+        {% if form.kind.errors %}<div class="form-error">{{ form.kind.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="{{ form.opening_balance.id_for_label }}">{{ form.opening_balance.label }}</label>
+      {{ form.opening_balance }}
+      {% if form.opening_balance.errors %}<div class="form-error">{{ form.opening_balance.errors.0 }}</div>{% endif %}
+      <p class="form-hint">Counts toward Bank account balance; excluded from Spending statistics.</p>
+    </div>
+
+    <div class="form-actions">
+      <a href="{% url 'bank_accounts' %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary">Create Bank account</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

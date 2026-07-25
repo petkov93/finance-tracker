@@ -20,6 +20,14 @@ _Avoid_: Account type, account class, product type
 The single Bank account per user that represents their physical money on hand (coins and bills), not money held at a bank. It cannot be deleted.
 _Avoid_: Cash wallet, petty cash, physical account, cash balance (as the name of the container)
 
+**Opening balance**:
+The starting amount already in a Bank account when it is created, recorded so Bank account balance and Available balance are correct from day one without counting as day-to-day earning or spending. Excluded from Spending statistics and Spending and income totals.
+_Avoid_: Initial deposit, seed balance, starting transaction (as the domain name for this concept)
+
+**Bank account balance**:
+How much a Bank account currently holds, expressed in that Bank account currency: Opening balance plus income minus expenses on that Bank account (may be negative, for example on a credit-kind Bank account).
+_Avoid_: Pot total, account equity, ledger balance (alone)
+
 **Default currency**:
 The unit of account a user thinks in for dashboard balances and statistics.
 _Avoid_: Display currency, home currency, preferred currency
@@ -105,7 +113,7 @@ Available balance plus open receivables minus open payables, each IOU amount dis
 _Avoid_: Net worth, economic balance, adjusted balance
 
 **Spending and income totals**:
-Dashboard income and expense figures that exclude IOU-linked transactions; they reflect day-to-day earning and spending only.
+Dashboard income and expense figures that exclude IOU-linked transactions and Opening balance; they reflect day-to-day earning and spending only.
 _Avoid_: Real income, core expenses, non-IOU totals
 
 **Finished IOU**:
@@ -121,5 +129,5 @@ A transaction tied to an IOU as its opening movement or a recorded repayment. It
 _Avoid_: Loan transaction, debt entry, IOU expense
 
 **Spending statistics**:
-Income, expense, and category breakdowns that exclude IOU-linked transactions, on both the dashboard pills and the statistics page.
+Income, expense, and category breakdowns that exclude IOU-linked transactions and Opening balance, on both the dashboard pills and the statistics page.
 _Avoid_: Core stats, non-IOU analytics, regular spending view

@@ -1,10 +1,15 @@
+from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import ProtectedError, Q, QuerySet, Sum
+from django.db.models.functions import Coalesce
+from django.utils import timezone
 
 from financetracker.models import BankAccount, Transaction, ensure_user_profile
 
 CASH_BANK_ACCOUNT_NAME = "Cash"
+OPENING_BALANCE_DESCRIPTION = "Opening balance"
 
 
 class BankAccountError(Exception):
@@ -55,10 +60,114 @@ def assert_transaction_currency_matches_bank_account(
         )
 
 
+def create_bank_account(
+    user: User,
+    *,
+    name: str,
+    currency: str,
+    kind: str = "",
+    opening_balance: Decimal = Decimal("0"),
+) -> BankAccount:
+    """Create a custom Bank account with optional Opening balance."""
+    ensure_user_bank_accounts(user)
+    opening_balance = Decimal(opening_balance)
+    with transaction.atomic():
+        account = BankAccount.objects.create(
+            user=user,
+            name=name,
+            currency=currency,
+            kind=kind or "",
+            is_cash=False,
+        )
+        if opening_balance != 0:
+            tx_type = (
+                Transaction.INCOME if opening_balance > 0 else Transaction.EXPENSE
+            )
+            opening_tx = Transaction.objects.create(
+                user=user,
+                bank_account=account,
+                type=tx_type,
+                amount=abs(opening_balance),
+                currency=currency,
+                description=OPENING_BALANCE_DESCRIPTION,
+                date=timezone.now().date(),
+            )
+            account.opening_transaction = opening_tx
+            account.save(update_fields=["opening_transaction"])
+        return account
+
+
+def rename_bank_account(bank_account: BankAccount, name: str) -> BankAccount:
+    bank_account.name = name
+    bank_account.save(update_fields=["name"])
+    return bank_account
+
+
+def bank_account_balance(bank_account: BankAccount) -> Decimal:
+    """Bank account balance in Bank account currency (may be negative)."""
+    aggregates = Transaction.objects.filter(bank_account=bank_account).aggregate(
+        income=Coalesce(
+            Sum("amount", filter=Q(type=Transaction.INCOME)),
+            Decimal("0"),
+        ),
+        expense=Coalesce(
+            Sum("amount", filter=Q(type=Transaction.EXPENSE)),
+            Decimal("0"),
+        ),
+    )
+    return aggregates["income"] - aggregates["expense"]
+
+
+def is_opening_balance_transaction(transaction: Transaction) -> bool:
+    try:
+        return transaction.opening_for_bank_account is not None
+    except BankAccount.DoesNotExist:
+        return False
+
+
+def opening_balance_transaction_ids(user: User) -> set[int]:
+    return set(
+        BankAccount.objects.filter(
+            user=user,
+            opening_transaction__isnull=False,
+        ).values_list("opening_transaction_id", flat=True)
+    )
+
+
+def exclude_opening_balance_transactions(
+    queryset: QuerySet[Transaction],
+) -> QuerySet[Transaction]:
+    return queryset.filter(opening_for_bank_account__isnull=True)
+
+
+def exclude_from_spending_statistics(
+    queryset: QuerySet[Transaction],
+) -> QuerySet[Transaction]:
+    """Transactions for Spending statistics / Spending and income totals."""
+    from financetracker.services.iou import exclude_iou_linked_transactions
+
+    return exclude_opening_balance_transactions(
+        exclude_iou_linked_transactions(queryset)
+    )
+
+
+def bank_account_is_empty(bank_account: BankAccount) -> bool:
+    return not Transaction.objects.filter(bank_account=bank_account).exists()
+
+
 def delete_bank_account(bank_account: BankAccount) -> None:
     if bank_account.is_cash:
         raise BankAccountError("Cash cannot be deleted.")
-    bank_account.delete()
+    if not bank_account_is_empty(bank_account):
+        raise BankAccountError(
+            "Bank account cannot be deleted while it still has linked transactions."
+        )
+    try:
+        bank_account.delete()
+    except ProtectedError as exc:
+        raise BankAccountError(
+            "Bank account cannot be deleted while it still has linked transactions."
+        ) from exc
 
 
 def _single_user_id_for_transactions(
