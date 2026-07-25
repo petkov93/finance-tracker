@@ -8,6 +8,7 @@ from django.db.models import Case, DateField, F, IntegerField, QuerySet, Value, 
 from django.utils import timezone
 
 from financetracker.models import Category, IOU, IOURepayment, Transaction
+from financetracker.services.bank_accounts import ensure_cash_bank_account
 from financetracker.services.currency import get_rates
 
 LENDING_CATEGORY_NAME = "Lending"
@@ -172,6 +173,7 @@ def _create_iou(
     with transaction.atomic():
         opening = Transaction.objects.create(
             user=user,
+            bank_account=ensure_cash_bank_account(user),
             type=tx_type,
             amount=amount,
             currency=currency,
@@ -265,6 +267,7 @@ def record_repayment(
 
         repayment_tx = Transaction.objects.create(
             user=iou.user,
+            bank_account=ensure_cash_bank_account(iou.user),
             type=tx_type,
             amount=amount,
             currency=iou.currency,

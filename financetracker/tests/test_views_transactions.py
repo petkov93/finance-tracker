@@ -6,6 +6,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import IOU, Transaction, UserProfile, ensure_user_profile
+from financetracker.services.bank_accounts import ensure_cash_bank_account
 from financetracker.services.iou import create_receivable, record_repayment
 from financetracker.services.currency import RateResult
 from financetracker.tests.factories import (
@@ -40,6 +41,7 @@ class TransactionViewsTests(TestCase):
         self.addCleanup(self.supported_patcher.stop)
         ensure_user_profile(self.user)
         ensure_user_profile(self.other_user)
+        self.cash = ensure_cash_bank_account(self.user)
 
     def test_add_transaction(self):
         response = self.client.post(
@@ -48,6 +50,7 @@ class TransactionViewsTests(TestCase):
                 "type": Transaction.INCOME,
                 "amount": "1500.50",
                 "currency": "CZK",
+                "bank_account": self.cash.pk,
                 "category": self.category.pk,
                 "description": "Salary",
                 "date": "2025-01-15",
@@ -72,6 +75,7 @@ class TransactionViewsTests(TestCase):
                 "type": Transaction.EXPENSE,
                 "amount": "75.00",
                 "currency": "CZK",
+                "bank_account": self.cash.pk,
                 "category": self.category.pk,
                 "description": "Updated lunch",
                 "date": transaction.date.isoformat(),

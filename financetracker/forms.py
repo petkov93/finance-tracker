@@ -4,7 +4,12 @@ from django import forms
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import InvestmentEntry, IOU, Transaction, UserProfile
+from .models import BankAccount, InvestmentEntry, IOU, Transaction, UserProfile
+from .services.bank_accounts import (
+    assert_transaction_currency_matches_bank_account,
+    bank_accounts_for_user,
+    BankAccountError,
+)
 from .services.iou import selectable_categories
 
 COMMON_CURRENCY_CODES = ("CZK", "USD", "EUR", "JPY", "GBP", "CNY")
@@ -131,10 +136,25 @@ class TransactionForm(forms.ModelForm):
         label="Currency",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+    bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        required=True,
+        label="Bank account",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
 
     class Meta:
         model = Transaction
-        fields = ["type", "amount", "currency", "category", "description", "date"]
+        fields = [
+            "type",
+            "amount",
+            "currency",
+            "bank_account",
+            "category",
+            "description",
+            "date",
+        ]
         widgets = {
             "type": forms.Select(attrs={"class": "form-select"}),
             "amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0.01", "placeholder": "0.00"}),
@@ -143,13 +163,20 @@ class TransactionForm(forms.ModelForm):
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
         }
 
-    def __init__(self, *args, currency_choices=None, default_currency=None, **kwargs):
+    def __init__(self, *args, user=None, currency_choices=None, default_currency=None, **kwargs):
         super().__init__(*args, **kwargs)
         choices = list(currency_choices or [])
         self.fields["currency"].choices = choices
         self.fields["category"].queryset = selectable_categories()
         self.fields["category"].empty_label = "— No category —"
         self.fields["category"].required = False
+        if user is not None:
+            accounts = bank_accounts_for_user(user)
+            self.fields["bank_account"].queryset = accounts
+            if not self.instance.pk:
+                cash = accounts.filter(is_cash=True).first()
+                if cash is not None:
+                    self.fields["bank_account"].initial = cash.pk
         if not self.instance.pk and default_currency:
             self.fields["currency"].initial = default_currency
 
@@ -160,6 +187,20 @@ class TransactionForm(forms.ModelForm):
         if normalized not in valid_codes:
             raise forms.ValidationError("Select a supported currency.")
         return normalized
+
+    def clean(self):
+        cleaned = super().clean()
+        currency = cleaned.get("currency")
+        bank_account = cleaned.get("bank_account")
+        if currency and bank_account is not None:
+            try:
+                assert_transaction_currency_matches_bank_account(
+                    currency=currency,
+                    bank_account=bank_account,
+                )
+            except BankAccountError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+        return cleaned
 
 
 class InvestmentEntryForm(forms.ModelForm):

@@ -3,7 +3,8 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 
-from financetracker.models import Category, InvestmentEntry, IOU, Transaction
+from financetracker.models import BankAccount, Category, InvestmentEntry, IOU, Transaction
+from financetracker.services.bank_accounts import ensure_cash_bank_account
 
 DEFAULT_PASSWORD = "pass1234"
 
@@ -16,6 +17,23 @@ def create_category(name="Food", type=Category.EXPENSE, icon="🍽️"):
     return Category.objects.create(name=name, type=type, icon=icon)
 
 
+def create_bank_account(
+    user,
+    *,
+    name="Savings",
+    currency="CZK",
+    kind=BankAccount.SAVINGS,
+    is_cash=False,
+):
+    return BankAccount.objects.create(
+        user=user,
+        name=name,
+        currency=currency,
+        kind=kind,
+        is_cash=is_cash,
+    )
+
+
 def create_transaction(
     user,
     *,
@@ -25,9 +43,13 @@ def create_transaction(
     category=None,
     description="",
     transaction_date=None,
+    bank_account=None,
 ):
+    if bank_account is None:
+        bank_account = ensure_cash_bank_account(user)
     return Transaction.objects.create(
         user=user,
+        bank_account=bank_account,
         type=type,
         amount=amount,
         currency=currency,

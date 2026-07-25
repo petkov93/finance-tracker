@@ -4,6 +4,22 @@ Personal finance tracking for day-to-day income, expenses, and investments. Tran
 
 ## Language
 
+**Bank account**:
+A named money container the user owns (for example a checking, savings, or credit account at a bank, or Cash), which holds day-to-day transactions in a single Bank account currency.
+_Avoid_: Account (alone), wallet, pot, bucket, ledger account
+
+**Bank account currency**:
+The single currency in which a Bank account holds money and in which that Bank account's own balance is expressed. Chosen when the Bank account is created and not changed afterward.
+_Avoid_: Account native currency, pot currency, home currency (for a Bank account)
+
+**Bank account kind**:
+An optional label on a Bank account from a small fixed set — checking, savings, or credit. Cash is identified as Cash, not by this kind.
+_Avoid_: Account type, account class, product type
+
+**Cash**:
+The single Bank account per user that represents their physical money on hand (coins and bills), not money held at a bank. It cannot be deleted.
+_Avoid_: Cash wallet, petty cash, physical account, cash balance (as the name of the container)
+
 **Default currency**:
 The unit of account a user thinks in for dashboard balances and statistics.
 _Avoid_: Display currency, home currency, preferred currency
@@ -17,7 +33,7 @@ A fixed, product-curated subset of supported currencies shown first in currency 
 _Avoid_: Recommended currencies, popular currencies, weighted currencies, featured currencies
 
 **Transaction currency**:
-The currency in which a transaction amount was actually paid or received.
+The currency in which a transaction amount was actually paid or received. For a transaction on a Bank account, it matches that Bank account currency.
 _Avoid_: Native currency, native code, source currency, original currency field
 
 **Display conversion**:
@@ -101,7 +117,7 @@ The date of the IOU opening transaction — when the lend or borrow cash movemen
 _Avoid_: Created date, IOU opened at, inception timestamp
 
 **IOU-linked transaction**:
-A transaction tied to an IOU as its opening movement or a recorded repayment.
+A transaction tied to an IOU as its opening movement or a recorded repayment. It belongs to a Bank account chosen when the IOU is opened or the repayment is recorded (default Cash).
 _Avoid_: Loan transaction, debt entry, IOU expense
 
 **Spending statistics**:
