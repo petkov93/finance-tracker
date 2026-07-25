@@ -187,6 +187,41 @@ class Transaction(models.Model):
         return f"{self.get_type_display()} — {self.amount} {self.currency} on {self.date}"
 
 
+class Transfer(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transfers")
+    from_bank_account = models.ForeignKey(
+        BankAccount,
+        on_delete=models.PROTECT,
+        related_name="transfers_out",
+    )
+    to_bank_account = models.ForeignKey(
+        BankAccount,
+        on_delete=models.PROTECT,
+        related_name="transfers_in",
+    )
+    source_transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.PROTECT,
+        related_name="transfer_source_for",
+    )
+    destination_transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.PROTECT,
+        related_name="transfer_destination_for",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return (
+            f"Transfer {self.source_transaction.amount} "
+            f"{self.source_transaction.currency} "
+            f"{self.from_bank_account.name} → {self.to_bank_account.name}"
+        )
+
+
 class IOU(models.Model):
     RECEIVABLE = "receivable"
     PAYABLE = "payable"

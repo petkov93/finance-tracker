@@ -27,6 +27,13 @@ urlpatterns = [
         views.delete_bank_account_view,
         name="delete_bank_account",
     ),
+    path("transfers/add/", views.add_transfer, name="add_transfer"),
+    path("transfers/<int:pk>/edit/", views.edit_transfer, name="edit_transfer"),
+    path(
+        "transfers/<int:pk>/delete/",
+        views.delete_transfer_view,
+        name="delete_transfer",
+    ),
     path("ious/", views.ious, name="ious"),
     path("ious/lend/", views.add_lend, name="add_lend"),
     path("ious/borrow/", views.add_borrow, name="add_borrow"),
