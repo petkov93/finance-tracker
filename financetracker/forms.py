@@ -220,6 +220,73 @@ class AssignBankAccountForm(forms.Form):
         self.fields["bank_account"].queryset = queryset
 
 
+class BankAccountCreateForm(forms.Form):
+    name = forms.CharField(
+        max_length=100,
+        label="Name",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "e.g. ČSOB savings"},
+        ),
+    )
+    currency = forms.ChoiceField(
+        choices=[],
+        required=True,
+        label="Bank account currency",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    kind = forms.ChoiceField(
+        choices=[("", "— Optional —"), *BankAccount.KIND_CHOICES],
+        required=False,
+        label="Kind",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    opening_balance = forms.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        label="Opening balance",
+        initial=Decimal("0"),
+        widget=forms.NumberInput(
+            attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "placeholder": "0.00",
+            },
+        ),
+    )
+
+    def __init__(self, *args, currency_choices=None, default_currency=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["currency"].choices = list(currency_choices or [])
+        if default_currency and not self.is_bound:
+            self.fields["currency"].initial = default_currency
+
+    def clean_currency(self):
+        code = self.cleaned_data.get("currency", "")
+        valid_codes = set(currency_choice_values(self.fields["currency"].choices))
+        normalized = code.upper()
+        if normalized not in valid_codes:
+            raise forms.ValidationError("Select a supported currency.")
+        return normalized
+
+    def clean_opening_balance(self):
+        value = self.cleaned_data.get("opening_balance")
+        if value is None:
+            return Decimal("0")
+        return value
+
+    def clean_kind(self):
+        return self.cleaned_data.get("kind") or ""
+
+
+class BankAccountRenameForm(forms.Form):
+    name = forms.CharField(
+        max_length=100,
+        label="Name",
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+
+
 class InvestmentEntryForm(forms.ModelForm):
     class Meta:
         model = InvestmentEntry

@@ -117,6 +117,13 @@ class BankAccount(models.Model):
     currency = models.CharField(max_length=3)
     kind = models.CharField(max_length=20, choices=KIND_CHOICES, blank=True, default="")
     is_cash = models.BooleanField(default=False)
+    opening_transaction = models.OneToOneField(
+        "Transaction",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="opening_for_bank_account",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     objects = BankAccountQuerySet.as_manager()
@@ -133,6 +140,17 @@ class BankAccount(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.currency}) — {self.user.username}"
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            original_currency = (
+                BankAccount.objects.filter(pk=self.pk)
+                .values_list("currency", flat=True)
+                .first()
+            )
+            if original_currency is not None and original_currency != self.currency:
+                raise ValueError("Bank account currency cannot be changed.")
+        return super().save(*args, **kwargs)
 
     def delete(self, using=None, keep_parents=False):
         if self.is_cash:

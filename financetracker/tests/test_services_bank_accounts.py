@@ -2,15 +2,19 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from financetracker.models import BankAccount, UserProfile, ensure_user_profile
+from financetracker.models import BankAccount, Transaction, UserProfile, ensure_user_profile
 from financetracker.services.bank_accounts import (
     CASH_BANK_ACCOUNT_NAME,
     BankAccountError,
     assert_transaction_currency_matches_bank_account,
+    bank_account_balance,
     bank_accounts_for_user,
+    create_bank_account,
     delete_bank_account,
     ensure_cash_bank_account,
     ensure_user_bank_accounts,
+    exclude_opening_balance_transactions,
+    rename_bank_account,
 )
 from financetracker.tests.factories import create_transaction, create_user
 
@@ -161,3 +165,214 @@ class TransactionCurrencyMatchTests(TestCase):
                 currency="USD",
                 bank_account=cash,
             )
+
+
+class CreateBankAccountTests(TestCase):
+    def test_create_bank_account_with_name_currency_kind_and_opening_balance(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+
+        account = create_bank_account(
+            user,
+            name="ČSOB savings",
+            currency="CZK",
+            kind=BankAccount.SAVINGS,
+            opening_balance=Decimal("1500.00"),
+        )
+
+        self.assertEqual(account.name, "ČSOB savings")
+        self.assertEqual(account.currency, "CZK")
+        self.assertEqual(account.kind, BankAccount.SAVINGS)
+        self.assertFalse(account.is_cash)
+        self.assertEqual(account.user_id, user.id)
+        self.assertEqual(bank_account_balance(account), Decimal("1500.00"))
+
+    def test_create_bank_account_kind_is_optional(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+
+        account = create_bank_account(
+            user,
+            name="Revolut",
+            currency="EUR",
+            opening_balance=Decimal("0"),
+        )
+
+        self.assertEqual(account.kind, "")
+        self.assertEqual(bank_account_balance(account), Decimal("0"))
+
+    def test_opening_balance_zero_creates_no_opening_transaction(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+
+        account = create_bank_account(
+            user,
+            name="Empty account",
+            currency="CZK",
+            opening_balance=Decimal("0"),
+        )
+
+        self.assertIsNone(account.opening_transaction)
+        self.assertEqual(
+            Transaction.objects.filter(bank_account=account).count(),
+            0,
+        )
+
+
+class BankAccountBalanceTests(TestCase):
+    def test_balance_includes_opening_balance_and_transactions(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        account = create_bank_account(
+            user,
+            name="Checking",
+            currency="CZK",
+            kind=BankAccount.CHECKING,
+            opening_balance=Decimal("1000.00"),
+        )
+        create_transaction(
+            user,
+            amount=Decimal("200.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+            bank_account=account,
+        )
+        create_transaction(
+            user,
+            amount=Decimal("50.00"),
+            currency="CZK",
+            type=Transaction.EXPENSE,
+            bank_account=account,
+        )
+
+        self.assertEqual(bank_account_balance(account), Decimal("1150.00"))
+
+    def test_balance_may_be_negative(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        account = create_bank_account(
+            user,
+            name="Credit card",
+            currency="CZK",
+            kind=BankAccount.CREDIT,
+            opening_balance=Decimal("-500.00"),
+        )
+        create_transaction(
+            user,
+            amount=Decimal("100.00"),
+            currency="CZK",
+            type=Transaction.EXPENSE,
+            bank_account=account,
+        )
+
+        self.assertEqual(bank_account_balance(account), Decimal("-600.00"))
+
+
+class RenameBankAccountTests(TestCase):
+    def test_rename_custom_bank_account(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        account = create_bank_account(
+            user,
+            name="Old name",
+            currency="CZK",
+        )
+
+        renamed = rename_bank_account(account, "New name")
+
+        renamed.refresh_from_db()
+        self.assertEqual(renamed.name, "New name")
+        self.assertEqual(renamed.currency, "CZK")
+
+    def test_currency_cannot_change_after_create(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        account = create_bank_account(
+            user,
+            name="Locked FX",
+            currency="CZK",
+        )
+
+        account.currency = "EUR"
+        with self.assertRaises(ValueError):
+            account.save()
+
+        account.refresh_from_db()
+        self.assertEqual(account.currency, "CZK")
+
+
+class DeleteBankAccountGuardTests(TestCase):
+    def test_delete_blocked_when_transactions_exist(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        account = create_bank_account(
+            user,
+            name="In use",
+            currency="CZK",
+            opening_balance=Decimal("0"),
+        )
+        create_transaction(
+            user,
+            amount=Decimal("10.00"),
+            currency="CZK",
+            bank_account=account,
+        )
+
+        with self.assertRaises(BankAccountError):
+            delete_bank_account(account)
+
+        self.assertTrue(BankAccount.objects.filter(pk=account.pk).exists())
+
+    def test_delete_blocked_when_opening_balance_linkage_exists(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        account = create_bank_account(
+            user,
+            name="With opening",
+            currency="CZK",
+            opening_balance=Decimal("100.00"),
+        )
+
+        with self.assertRaises(BankAccountError):
+            delete_bank_account(account)
+
+        self.assertTrue(BankAccount.objects.filter(pk=account.pk).exists())
+
+    def test_empty_custom_bank_account_can_be_deleted(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        account = create_bank_account(
+            user,
+            name="Empty",
+            currency="CZK",
+            opening_balance=Decimal("0"),
+        )
+
+        delete_bank_account(account)
+
+        self.assertFalse(BankAccount.objects.filter(pk=account.pk).exists())
+
+
+class OpeningBalanceSpendingExclusionTests(TestCase):
+    def test_opening_balance_excluded_from_spending_queryset(self):
+        user = create_user()
+        ensure_cash_bank_account(user)
+        account = create_bank_account(
+            user,
+            name="Savings",
+            currency="CZK",
+            opening_balance=Decimal("1000.00"),
+        )
+        regular = create_transaction(
+            user,
+            amount=Decimal("40.00"),
+            currency="CZK",
+            type=Transaction.EXPENSE,
+            bank_account=account,
+        )
+
+        qs = exclude_opening_balance_transactions(
+            Transaction.objects.filter(user=user, bank_account=account)
+        )
+
+        self.assertQuerySetEqual(qs.order_by("pk"), [regular], transform=lambda t: t)
