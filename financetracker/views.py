@@ -28,6 +28,7 @@ from .services.bank_accounts import (
     bank_account_balance,
     bank_account_is_empty,
     bank_accounts_for_user,
+    compute_available_balance,
     create_bank_account,
     delete_bank_account,
     ensure_user_bank_accounts,
@@ -198,11 +199,25 @@ def dashboard(request):
         iou_linked_transaction_ids=linked_ids,
     )
 
-    conversion_degraded = display.conversion_degraded
+    available_result = compute_available_balance(
+        request.user,
+        profile.default_currency,
+    )
+    conversion_degraded = (
+        display.conversion_degraded or available_result.conversion_degraded
+    )
     available = None
     total = None
+    rates_stale_date = display.rates_stale_date
+    if available_result.rates_stale_date is not None:
+        rates_stale_date = (
+            max(rates_stale_date, available_result.rates_stale_date)
+            if rates_stale_date is not None
+            else available_result.rates_stale_date
+        )
 
-    if not conversion_degraded:
+    # Available/Total depend on Bank account and open-IOU FX, not transaction-list display FX.
+    if not available_result.conversion_degraded:
         iou_adjustment = compute_open_iou_adjustment(
             request.user,
             profile.default_currency,
@@ -210,7 +225,7 @@ def dashboard(request):
         if iou_adjustment.conversion_degraded:
             conversion_degraded = True
         else:
-            available = display.balance
+            available = available_result.available
             total = available + iou_adjustment.net_adjustment
 
     return render(request, "financetracker/dashboard.html", {
@@ -224,7 +239,7 @@ def dashboard(request):
         "total": total,
         "default_currency": display.default_currency,
         "conversion_degraded": conversion_degraded,
-        "rates_stale_date": display.rates_stale_date,
+        "rates_stale_date": rates_stale_date,
     })
 
 

@@ -7,7 +7,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import IOU, Transaction, ensure_user_profile
-from financetracker.services.bank_accounts import ensure_cash_bank_account
+from financetracker.services.bank_accounts import create_bank_account
 from financetracker.services.currency import RateResult
 from financetracker.services.iou import close_unpaid, create_payable, create_receivable
 from financetracker.tests.factories import (
@@ -233,17 +233,29 @@ class IouViewsTests(TestCase):
         self.assertEqual(response.context["total"], Decimal("1000.00"))
 
     def test_dashboard_degradation_hides_available_and_total(self):
+        eur_account = create_bank_account(
+            self.user,
+            name="Revolut",
+            currency="EUR",
+        )
         create_transaction(
             self.user,
             amount=Decimal("10.00"),
             currency="EUR",
             type=Transaction.INCOME,
             transaction_date=date.today(),
+            bank_account=eur_account,
         )
 
-        with patch(
-            "financetracker.services.display_conversion.get_rates",
-            return_value={},
+        with (
+            patch(
+                "financetracker.services.display_conversion.get_rates",
+                return_value={},
+            ),
+            patch(
+                "financetracker.services.bank_accounts.get_rates",
+                return_value={},
+            ),
         ):
             response = self.client.get(reverse("dashboard"))
 

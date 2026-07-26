@@ -56,12 +56,12 @@
 </section>
 {% endif %}
 
-{% if not conversion_degraded %}
+{% if available is not None %}
 <div class="hero-stats hero-stats--balances animate-in animate-in-delay-1">
   <div class="hero-balance {% if available >= 0 %}positive{% else %}negative{% endif %}">
     <span class="summary-label">Available</span>
     <span class="hero-amount">{% money_amount available %} <small>{{ default_currency }}</small></span>
-    <span class="summary-sub">income minus expenses</span>
+    <span class="summary-sub">across Bank accounts</span>
   </div>
   <div class="hero-balance {% if total >= 0 %}positive{% else %}negative{% endif %}">
     <span class="summary-label">Total</span>
@@ -69,6 +69,8 @@
     <span class="summary-sub">includes money owed to you, net of what you owe</span>
   </div>
 </div>
+{% endif %}
+{% if total_income is not None %}
 <div class="dashboard-totals animate-in animate-in-delay-1">
   <div class="stat-pill income">
     <span class="summary-label">Income</span>
