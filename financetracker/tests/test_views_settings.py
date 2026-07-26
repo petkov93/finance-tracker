@@ -81,7 +81,7 @@ class SettingsViewsTests(TestCase):
             self.user,
             counterparty_name="Pat",
             amount=Decimal("100.00"),
-            currency="EUR",
+            currency="CZK",
         )
         record_repayment(iou, amount=Decimal("25.00"))
         repayment_tx = iou.repayments.get().transaction
@@ -110,7 +110,7 @@ class SettingsViewsTests(TestCase):
             self.user,
             counterparty_name="Pat",
             amount=Decimal("50.00"),
-            currency="EUR",
+            currency="CZK",
         )
         response = self.client.get(reverse("settings"))
         self.assertEqual(response.context["transaction_count"], 1)

@@ -7,8 +7,12 @@ from django.db import transaction
 from django.db.models import Case, DateField, F, IntegerField, QuerySet, Value, When
 from django.utils import timezone
 
-from financetracker.models import Category, IOU, IOURepayment, Transaction
-from financetracker.services.bank_accounts import ensure_cash_bank_account
+from financetracker.models import BankAccount, Category, IOU, IOURepayment, Transaction
+from financetracker.services.bank_accounts import (
+    BankAccountError,
+    assert_transaction_currency_matches_bank_account,
+    ensure_cash_bank_account,
+)
 from financetracker.services.currency import get_rates
 
 LENDING_CATEGORY_NAME = "Lending"
@@ -155,6 +159,22 @@ def selectable_categories() -> QuerySet[Category]:
     )
 
 
+def _resolve_iou_bank_account(
+    user: User,
+    *,
+    currency: str,
+    bank_account: BankAccount | None,
+) -> BankAccount:
+    account = bank_account if bank_account is not None else ensure_cash_bank_account(user)
+    if account.user_id != user.id:
+        raise BankAccountError("Bank account must belong to the same user.")
+    assert_transaction_currency_matches_bank_account(
+        currency=currency,
+        bank_account=account,
+    )
+    return account
+
+
 def _create_iou(
     user: User,
     *,
@@ -167,13 +187,19 @@ def _create_iou(
     category: Category,
     tx_type: str,
     description: str,
+    bank_account: BankAccount | None = None,
 ) -> IOU:
     on_date = transaction_date or timezone.now().date()
+    account = _resolve_iou_bank_account(
+        user,
+        currency=currency,
+        bank_account=bank_account,
+    )
 
     with transaction.atomic():
         opening = Transaction.objects.create(
             user=user,
-            bank_account=ensure_cash_bank_account(user),
+            bank_account=account,
             type=tx_type,
             amount=amount,
             currency=currency,
@@ -202,6 +228,7 @@ def create_receivable(
     currency: str,
     due_date: date | None = None,
     transaction_date: date | None = None,
+    bank_account: BankAccount | None = None,
 ) -> IOU:
     return _create_iou(
         user,
@@ -214,6 +241,7 @@ def create_receivable(
         category=ensure_lending_category(),
         tx_type=Transaction.EXPENSE,
         description=f"Lent to {counterparty_name}",
+        bank_account=bank_account,
     )
 
 
@@ -225,6 +253,7 @@ def create_payable(
     currency: str,
     due_date: date | None = None,
     transaction_date: date | None = None,
+    bank_account: BankAccount | None = None,
 ) -> IOU:
     return _create_iou(
         user,
@@ -237,6 +266,7 @@ def create_payable(
         category=ensure_borrowing_category(),
         tx_type=Transaction.INCOME,
         description=f"Borrowed from {counterparty_name}",
+        bank_account=bank_account,
     )
 
 
@@ -245,6 +275,7 @@ def record_repayment(
     *,
     amount: Decimal,
     transaction_date: date | None = None,
+    bank_account: BankAccount | None = None,
 ) -> IOURepayment:
     if iou.status != IOU.ACTIVE:
         raise ValueError("Can only repay active IOUs.")
@@ -254,6 +285,11 @@ def record_repayment(
         raise ValueError("Repayment amount cannot exceed remaining amount.")
 
     on_date = transaction_date or timezone.now().date()
+    account = _resolve_iou_bank_account(
+        iou.user,
+        currency=iou.currency,
+        bank_account=bank_account,
+    )
 
     with transaction.atomic():
         if iou.direction == IOU.RECEIVABLE:
@@ -267,7 +303,7 @@ def record_repayment(
 
         repayment_tx = Transaction.objects.create(
             user=iou.user,
-            bank_account=ensure_cash_bank_account(iou.user),
+            bank_account=account,
             type=tx_type,
             amount=amount,
             currency=iou.currency,

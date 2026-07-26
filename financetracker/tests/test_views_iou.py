@@ -7,11 +7,12 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import IOU, Transaction, ensure_user_profile
-from financetracker.services.bank_accounts import create_bank_account
+from financetracker.services.bank_accounts import ensure_cash_bank_account
 from financetracker.services.currency import RateResult
 from financetracker.services.iou import close_unpaid, create_payable, create_receivable
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
+    create_bank_account,
     create_iou,
     create_transaction,
     create_user,
@@ -114,47 +115,82 @@ class IouViewsTests(TestCase):
         self.assertContains(response, "Active payables")
         self.assertContains(response, "Borrowed")
 
+    def test_add_lend_form_defaults_bank_account_to_cash(self):
+        cash = ensure_cash_bank_account(self.user)
+
+        response = self.client.get(reverse("add_lend"))
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        self.assertEqual(form.fields["bank_account"].initial, cash.pk)
+        self.assertContains(response, "Bank account")
+        self.assertContains(response, f'value="{cash.pk}"')
+
     def test_add_lend_creates_receivable_and_redirects(self):
+        cash = ensure_cash_bank_account(self.user)
         response = self.client.post(
             reverse("add_lend"),
             {
                 "counterparty_name": "Jamie",
                 "amount": "500.00",
                 "currency": "CZK",
+                "bank_account": str(cash.pk),
                 "date": "2026-07-01",
                 "due_date": "2026-08-01",
             },
         )
 
         self.assertRedirects(response, reverse("ious"))
-        self.assertTrue(
-            IOU.objects.filter(
-                user=self.user,
-                direction=IOU.RECEIVABLE,
-                counterparty_name="Jamie",
-            ).exists()
+        iou = IOU.objects.get(
+            user=self.user,
+            direction=IOU.RECEIVABLE,
+            counterparty_name="Jamie",
+        )
+        self.assertEqual(iou.opening_transaction.bank_account, cash)
+
+    def test_add_lend_assigns_opening_transaction_to_chosen_bank_account(self):
+        savings = create_bank_account(
+            self.user,
+            name="Savings",
+            currency="CZK",
         )
 
+        response = self.client.post(
+            reverse("add_lend"),
+            {
+                "counterparty_name": "Jamie",
+                "amount": "500.00",
+                "currency": "CZK",
+                "bank_account": str(savings.pk),
+                "date": "2026-07-01",
+            },
+        )
+
+        self.assertRedirects(response, reverse("ious"))
+        iou = IOU.objects.get(user=self.user, counterparty_name="Jamie")
+        self.assertEqual(iou.opening_transaction.bank_account, savings)
+
     def test_add_borrow_creates_payable_and_redirects(self):
+        cash = ensure_cash_bank_account(self.user)
         response = self.client.post(
             reverse("add_borrow"),
             {
                 "counterparty_name": "Sam",
                 "amount": "300.00",
                 "currency": "CZK",
+                "bank_account": str(cash.pk),
                 "date": "2026-07-01",
                 "due_date": "2026-09-01",
             },
         )
 
         self.assertRedirects(response, reverse("ious"))
-        self.assertTrue(
-            IOU.objects.filter(
-                user=self.user,
-                direction=IOU.PAYABLE,
-                counterparty_name="Sam",
-            ).exists()
+        iou = IOU.objects.get(
+            user=self.user,
+            direction=IOU.PAYABLE,
+            counterparty_name="Sam",
         )
+        self.assertEqual(iou.opening_transaction.bank_account, cash)
 
     def test_dashboard_exposes_available_and_total_context_keys(self):
         create_transaction(
@@ -301,6 +337,21 @@ class IouViewsTests(TestCase):
         self.assertContains(response, "Lent to Jamie")
         self.assertContains(response, "Record repayment")
 
+    def test_iou_detail_repay_form_defaults_bank_account_to_cash(self):
+        cash = ensure_cash_bank_account(self.user)
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.get(reverse("iou_detail", args=[iou.pk]))
+
+        form = response.context["repay_form"]
+        self.assertEqual(form.fields["bank_account"].initial, cash.pk)
+        self.assertContains(response, "Bank account")
+
     def test_iou_detail_isolated_to_owner(self):
         iou = create_receivable(
             self.other_user,
@@ -314,6 +365,7 @@ class IouViewsTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_repay_partial_updates_remaining_and_dashboard_balances(self):
+        cash = ensure_cash_bank_account(self.user)
         create_transaction(
             self.user,
             amount=Decimal("1000.00"),
@@ -329,7 +381,11 @@ class IouViewsTests(TestCase):
 
         response = self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"amount": "200.00", "date": "2026-07-10"},
+            {
+                "amount": "200.00",
+                "date": "2026-07-10",
+                "bank_account": str(cash.pk),
+            },
         )
 
         self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
@@ -337,6 +393,7 @@ class IouViewsTests(TestCase):
         self.assertEqual(iou.remaining_amount, Decimal("300.00"))
         self.assertEqual(iou.status, IOU.ACTIVE)
         self.assertEqual(iou.repayments.count(), 1)
+        self.assertEqual(iou.repayments.get().transaction.bank_account, cash)
 
         dashboard = self.client.get(reverse("dashboard"))
         self.assertEqual(dashboard.context["available"], Decimal("700.00"))
@@ -346,7 +403,12 @@ class IouViewsTests(TestCase):
         self.assertContains(detail, "Repayment from Jamie")
         self.assertContains(detail, "200.00")
 
-    def test_repay_full_closes_iou_as_paid(self):
+    def test_repay_assigns_transaction_to_chosen_bank_account(self):
+        savings = create_bank_account(
+            self.user,
+            name="Savings",
+            currency="CZK",
+        )
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
@@ -356,7 +418,34 @@ class IouViewsTests(TestCase):
 
         response = self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"amount": "500.00", "date": "2026-07-10"},
+            {
+                "action": "repay",
+                "amount": "200.00",
+                "date": "2026-07-10",
+                "bank_account": str(savings.pk),
+            },
+        )
+
+        self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
+        repayment = iou.repayments.get()
+        self.assertEqual(repayment.transaction.bank_account, savings)
+
+    def test_repay_full_closes_iou_as_paid(self):
+        cash = ensure_cash_bank_account(self.user)
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        response = self.client.post(
+            reverse("iou_detail", args=[iou.pk]),
+            {
+                "amount": "500.00",
+                "date": "2026-07-10",
+                "bank_account": str(cash.pk),
+            },
         )
 
         self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
@@ -368,6 +457,7 @@ class IouViewsTests(TestCase):
         self.assertNotContains(detail, "Record repayment")
 
     def test_repay_rejects_amount_over_remaining(self):
+        cash = ensure_cash_bank_account(self.user)
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
@@ -377,7 +467,11 @@ class IouViewsTests(TestCase):
 
         response = self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"amount": "500.01", "date": "2026-07-10"},
+            {
+                "amount": "500.01",
+                "date": "2026-07-10",
+                "bank_account": str(cash.pk),
+            },
         )
 
         self.assertEqual(response.status_code, 200)
@@ -390,6 +484,7 @@ class IouViewsTests(TestCase):
         side_effect=ValueError("Repayment amount cannot exceed remaining amount."),
     )
     def test_repay_surfaces_service_rejection_instead_of_500(self, _mock_record):
+        cash = ensure_cash_bank_account(self.user)
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
@@ -399,7 +494,12 @@ class IouViewsTests(TestCase):
 
         response = self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"action": "repay", "amount": "200.00", "date": "2026-07-10"},
+            {
+                "action": "repay",
+                "amount": "200.00",
+                "date": "2026-07-10",
+                "bank_account": str(cash.pk),
+            },
         )
 
         self.assertRedirects(response, reverse("iou_detail", args=[iou.pk]))
@@ -424,7 +524,7 @@ class IouViewsTests(TestCase):
         )
         self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"amount": "200.00", "date": "2026-07-10", "action": "repay"},
+            {"amount": "200.00", "date": "2026-07-10", "action": "repay", "bank_account": str(ensure_cash_bank_account(self.user).pk)},
         )
         iou.refresh_from_db()
 
@@ -457,7 +557,7 @@ class IouViewsTests(TestCase):
         )
         self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"amount": "200.00", "date": "2026-07-10", "action": "repay"},
+            {"amount": "200.00", "date": "2026-07-10", "action": "repay", "bank_account": str(ensure_cash_bank_account(self.user).pk)},
         )
         close_unpaid(iou)
 
@@ -510,7 +610,7 @@ class IouViewsTests(TestCase):
         )
         self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"amount": "500.00", "date": "2026-07-10", "action": "repay"},
+            {"amount": "500.00", "date": "2026-07-10", "action": "repay", "bank_account": str(ensure_cash_bank_account(self.user).pk)},
         )
         iou.refresh_from_db()
         self.assertEqual(iou.status, IOU.PAID)
@@ -560,7 +660,7 @@ class IouViewsTests(TestCase):
         )
         self.client.post(
             reverse("iou_detail", args=[paid.pk]),
-            {"amount": "50.00", "date": "2026-07-10", "action": "repay"},
+            {"amount": "50.00", "date": "2026-07-10", "action": "repay", "bank_account": str(ensure_cash_bank_account(self.user).pk)},
         )
 
         response = self.client.get(reverse("ious"))
@@ -625,15 +725,22 @@ class IouPolishViewTests(TestCase):
         self.assertEqual(response.context["available"], Decimal("500.00"))
 
     def test_edit_repayment_from_iou_detail_updates_remaining(self):
+        euro_pot = create_bank_account(self.user, name="Euro", currency="EUR")
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
             amount=Decimal("5.00"),
             currency="EUR",
+            bank_account=euro_pot,
         )
         self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"action": "repay", "amount": "3.00", "date": "2026-07-10"},
+            {
+                "action": "repay",
+                "amount": "3.00",
+                "date": "2026-07-10",
+                "bank_account": str(euro_pot.pk),
+            },
         )
         repayment = iou.repayments.get()
 
@@ -644,6 +751,7 @@ class IouPolishViewTests(TestCase):
                 "repayment_id": repayment.pk,
                 "amount": "2.00",
                 "date": "2026-07-11",
+                "bank_account": str(euro_pot.pk),
             },
         )
 
@@ -658,15 +766,22 @@ class IouPolishViewTests(TestCase):
     def test_edit_repayment_surfaces_service_rejection_instead_of_500(
         self, _mock_update
     ):
+        euro_pot = create_bank_account(self.user, name="Euro", currency="EUR")
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
             amount=Decimal("5.00"),
             currency="EUR",
+            bank_account=euro_pot,
         )
         self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"action": "repay", "amount": "3.00", "date": "2026-07-10"},
+            {
+                "action": "repay",
+                "amount": "3.00",
+                "date": "2026-07-10",
+                "bank_account": str(euro_pot.pk),
+            },
         )
         repayment = iou.repayments.get()
 
@@ -677,6 +792,7 @@ class IouPolishViewTests(TestCase):
                 "repayment_id": repayment.pk,
                 "amount": "2.00",
                 "date": "2026-07-11",
+                "bank_account": str(euro_pot.pk),
             },
         )
 
@@ -695,7 +811,7 @@ class IouPolishViewTests(TestCase):
         )
         self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"action": "repay", "amount": "200.00", "date": "2026-07-10"},
+            {"action": "repay", "amount": "200.00", "date": "2026-07-10", "bank_account": str(ensure_cash_bank_account(self.user).pk)},
         )
         repayment = iou.repayments.get()
 
@@ -721,7 +837,7 @@ class IouPolishViewTests(TestCase):
         )
         self.client.post(
             reverse("iou_detail", args=[iou.pk]),
-            {"action": "repay", "amount": "500.00", "date": "2026-07-10"},
+            {"action": "repay", "amount": "500.00", "date": "2026-07-10", "bank_account": str(ensure_cash_bank_account(self.user).pk)},
         )
         repayment = iou.repayments.get()
 
@@ -751,7 +867,7 @@ class IouPolishViewTests(TestCase):
         )
         self.client.post(
             reverse("iou_detail", args=[paid.pk]),
-            {"action": "repay", "amount": "50.00", "date": "2026-07-10"},
+            {"action": "repay", "amount": "50.00", "date": "2026-07-10", "bank_account": str(ensure_cash_bank_account(self.user).pk)},
         )
         paid.refresh_from_db()
         paid_opening_id = paid.opening_transaction_id

@@ -692,6 +692,7 @@ def add_lend(request):
     if request.method == "POST":
         form = LendForm(
             request.POST,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
         )
         if form.is_valid():
@@ -702,6 +703,7 @@ def add_lend(request):
                 currency=form.cleaned_data["currency"],
                 due_date=form.cleaned_data.get("due_date"),
                 transaction_date=form.cleaned_data["date"],
+                bank_account=form.cleaned_data["bank_account"],
             )
             messages.success(request, "Lending recorded successfully.")
             return redirect("ious")
@@ -711,6 +713,7 @@ def add_lend(request):
                 "date": timezone.now().date(),
                 "currency": currency_context["default_currency"],
             },
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
             default_currency=currency_context["default_currency"],
         )
@@ -745,6 +748,7 @@ def add_borrow(request):
     if request.method == "POST":
         form = BorrowForm(
             request.POST,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
         )
         if form.is_valid():
@@ -755,6 +759,7 @@ def add_borrow(request):
                 currency=form.cleaned_data["currency"],
                 due_date=form.cleaned_data.get("due_date"),
                 transaction_date=form.cleaned_data["date"],
+                bank_account=form.cleaned_data["bank_account"],
             )
             messages.success(request, "Borrowing recorded successfully.")
             return redirect("ious")
@@ -764,6 +769,7 @@ def add_borrow(request):
                 "date": timezone.now().date(),
                 "currency": currency_context["default_currency"],
             },
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
             default_currency=currency_context["default_currency"],
         )
@@ -777,8 +783,20 @@ def add_borrow(request):
 
 @login_required
 def iou_detail(request, pk):
-    iou = get_object_or_404(IOU, pk=pk, user=request.user)
-    repayments = iou.repayments.select_related("transaction").order_by(
+    iou = get_object_or_404(
+        IOU.objects.select_related(
+            "opening_transaction",
+            "opening_transaction__bank_account",
+            "opening_transaction__category",
+        ),
+        pk=pk,
+        user=request.user,
+    )
+    repayments = iou.repayments.select_related(
+        "transaction",
+        "transaction__bank_account",
+        "transaction__category",
+    ).order_by(
         "-transaction__date",
         "-created_at",
     )
@@ -831,6 +849,7 @@ def iou_detail(request, pk):
             )
             repay_form = RepayForm(
                 request.POST,
+                user=request.user,
                 max_amount=iou.remaining_amount + repayment.amount,
                 currency=iou.currency,
             )
@@ -869,6 +888,7 @@ def iou_detail(request, pk):
 
             repay_form = RepayForm(
                 request.POST,
+                user=request.user,
                 max_amount=iou.remaining_amount,
                 currency=iou.currency,
             )
@@ -878,6 +898,7 @@ def iou_detail(request, pk):
                         iou,
                         amount=repay_form.cleaned_data["amount"],
                         transaction_date=repay_form.cleaned_data["date"],
+                        bank_account=repay_form.cleaned_data["bank_account"],
                     )
                 except ValueError as exc:
                     messages.error(request, str(exc))
@@ -888,6 +909,7 @@ def iou_detail(request, pk):
         if iou.status == IOU.ACTIVE:
             repay_form = RepayForm(
                 initial={"date": timezone.now().date()},
+                user=request.user,
                 max_amount=iou.remaining_amount,
                 currency=iou.currency,
             )
@@ -902,6 +924,7 @@ def iou_detail(request, pk):
         if repay_form is None:
             repay_form = RepayForm(
                 initial={"date": timezone.now().date()},
+                user=request.user,
                 max_amount=iou.remaining_amount,
                 currency=iou.currency,
             )
