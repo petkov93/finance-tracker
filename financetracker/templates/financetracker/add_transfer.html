@@ -1,0 +1,54 @@
+{% extends "financetracker/base.html" %}
+{% block title %}{{ title }} — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Bank accounts</p>
+    <h1 class="page-title">{{ title }}</h1>
+  </div>
+  <a href="{% url 'bank_accounts' %}" class="btn btn-ghost">← Back</a>
+</div>
+
+<div class="form-card">
+  <form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="form-error">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+
+    <div class="filter-grid">
+      <div class="form-group">
+        <label class="form-label" for="{{ form.from_bank_account.id_for_label }}">{{ form.from_bank_account.label }}</label>
+        {{ form.from_bank_account }}
+        {% if form.from_bank_account.errors %}<div class="form-error">{{ form.from_bank_account.errors.0 }}</div>{% endif %}
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="{{ form.to_bank_account.id_for_label }}">{{ form.to_bank_account.label }}</label>
+        {{ form.to_bank_account }}
+        {% if form.to_bank_account.errors %}<div class="form-error">{{ form.to_bank_account.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="filter-grid">
+      <div class="form-group">
+        <label class="form-label" for="{{ form.amount.id_for_label }}">{{ form.amount.label }}</label>
+        {{ form.amount }}
+        {% if form.amount.errors %}<div class="form-error">{{ form.amount.errors.0 }}</div>{% endif %}
+        <p class="form-hint">Amount is in the source Bank account currency. Cross-currency Transfers convert via Currency conversion.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="{{ form.date.id_for_label }}">{{ form.date.label }}</label>
+        {{ form.date }}
+        {% if form.date.errors %}<div class="form-error">{{ form.date.errors.0 }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <a href="{% url 'bank_accounts' %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary">{% if transfer %}Save Transfer{% else %}Create Transfer{% endif %}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

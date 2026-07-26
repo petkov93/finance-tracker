@@ -14,17 +14,40 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_GET, require_POST
 from .models import (
+    BankAccount,
     Transaction,
     Category,
     InvestmentEntry,
     IOU,
     IOURepayment,
+    Transfer,
     UserProfile,
     ensure_user_profile,
+)
+from .services.bank_accounts import (
+    BankAccountError,
+    bank_account_balance,
+    bank_account_is_empty,
+    bank_accounts_for_user,
+    compute_available_balance,
+    create_bank_account,
+    create_transfer,
+    delete_bank_account,
+    delete_transfer,
+    ensure_user_bank_accounts,
+    exclude_from_spending_statistics,
+    is_opening_balance_transaction,
+    is_transfer_transaction,
+    opening_balance_transaction_ids,
+    rename_bank_account,
+    transfer_transaction_ids,
+    update_transfer,
 )
 from .services.theme_constants import THEME_CHOICES
 from .services.theme_preference import for_request, set_preference
 from .forms import (
+    BankAccountCreateForm,
+    BankAccountRenameForm,
     CurrencyConverterForm,
     CustomPasswordChangeForm,
     DefaultCurrencyForm,
@@ -32,6 +55,7 @@ from .forms import (
     LendForm,
     BorrowForm,
     RepayForm,
+    TransferForm,
     IOUMetadataForm,
     ProfileForm,
     RegistrationForm,
@@ -59,7 +83,6 @@ from .services.iou import (
     create_payable,
     create_receivable,
     delete_transaction_with_iou_effects,
-    exclude_iou_linked_transactions,
     guard_opening_transaction_amount_currency,
     iou_linked_transaction_ids,
     is_iou_linked_transaction,
@@ -86,6 +109,7 @@ def login_view(request):
         if form.is_valid():
             user = form.get_user()
             ensure_user_profile(user)
+            ensure_user_bank_accounts(user)
             login(request, user)
             next_url = request.GET.get("next")
             if next_url and url_has_allowed_host_and_scheme(
@@ -136,6 +160,7 @@ def register_view(request):
                     user=user,
                     default_currency=form.cleaned_data["default_currency"],
                 )
+                ensure_user_bank_accounts(user)
             login(request, user)
             messages.success(request, f"Welcome, {user.username}! Your account has been created.")
             return redirect("dashboard")
@@ -168,8 +193,12 @@ def dashboard(request):
     
     profile = ensure_user_profile(request.user)
     all_transactions = Transaction.objects.filter(user=request.user)
-    spending_transactions = exclude_iou_linked_transactions(all_transactions)
-    linked_ids = iou_linked_transaction_ids(request.user)
+    spending_transactions = exclude_from_spending_statistics(all_transactions)
+    linked_ids = (
+        iou_linked_transaction_ids(request.user)
+        | opening_balance_transaction_ids(request.user)
+        | transfer_transaction_ids(request.user)
+    )
     display = convert_for_display(
         qs,
         profile.default_currency,
@@ -178,11 +207,25 @@ def dashboard(request):
         iou_linked_transaction_ids=linked_ids,
     )
 
-    conversion_degraded = display.conversion_degraded
+    available_result = compute_available_balance(
+        request.user,
+        profile.default_currency,
+    )
+    conversion_degraded = (
+        display.conversion_degraded or available_result.conversion_degraded
+    )
     available = None
     total = None
+    rates_stale_date = display.rates_stale_date
+    if available_result.rates_stale_date is not None:
+        rates_stale_date = (
+            max(rates_stale_date, available_result.rates_stale_date)
+            if rates_stale_date is not None
+            else available_result.rates_stale_date
+        )
 
-    if not conversion_degraded:
+    # Available/Total depend on Bank account and open-IOU FX, not transaction-list display FX.
+    if not available_result.conversion_degraded:
         iou_adjustment = compute_open_iou_adjustment(
             request.user,
             profile.default_currency,
@@ -190,7 +233,7 @@ def dashboard(request):
         if iou_adjustment.conversion_degraded:
             conversion_degraded = True
         else:
-            available = display.balance
+            available = available_result.available
             total = available + iou_adjustment.net_adjustment
 
     return render(request, "financetracker/dashboard.html", {
@@ -204,7 +247,7 @@ def dashboard(request):
         "total": total,
         "default_currency": display.default_currency,
         "conversion_degraded": conversion_degraded,
-        "rates_stale_date": display.rates_stale_date,
+        "rates_stale_date": rates_stale_date,
     })
 
 
@@ -244,6 +287,7 @@ def add_transaction(request):
     if request.method == "POST":
         form = TransactionForm(
             request.POST,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
             default_currency=currency_context["default_currency"],
         )
@@ -259,6 +303,7 @@ def add_transaction(request):
                 "date": timezone.now().date(),
                 "currency": currency_context["default_currency"],
             },
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
             default_currency=currency_context["default_currency"],
         )
@@ -272,6 +317,19 @@ def add_transaction(request):
 @login_required
 def edit_transaction(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    if is_opening_balance_transaction(transaction):
+        messages.error(
+            request,
+            "Opening balance cannot be edited.",
+        )
+        return redirect("dashboard")
+    if is_transfer_transaction(transaction):
+        messages.error(
+            request,
+            "Transfer legs cannot be edited from the dashboard. "
+            "Manage Transfers on the Bank accounts page.",
+        )
+        return redirect("dashboard")
     if is_iou_linked_transaction(transaction):
         messages.error(
             request,
@@ -302,6 +360,7 @@ def edit_transaction(request, pk):
         form = TransactionForm(
             request.POST,
             instance=transaction,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
         )
         if form.is_valid():
@@ -320,6 +379,7 @@ def edit_transaction(request, pk):
     else:
         form = TransactionForm(
             instance=transaction,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
         )
     return render(request, "financetracker/add_transaction.html", {
@@ -334,6 +394,19 @@ def edit_transaction(request, pk):
 @require_POST
 def delete_transaction(request, pk):
     transaction = get_object_or_404(Transaction, pk=pk, user=request.user)
+    if is_opening_balance_transaction(transaction):
+        messages.error(
+            request,
+            "Opening balance cannot be deleted.",
+        )
+        return redirect("dashboard")
+    if is_transfer_transaction(transaction):
+        messages.error(
+            request,
+            "Transfer legs cannot be deleted from the dashboard. "
+            "Manage Transfers on the Bank accounts page.",
+        )
+        return redirect("dashboard")
     if is_iou_linked_transaction(transaction):
         messages.error(
             request,
@@ -376,7 +449,7 @@ def statistics(request):
         from_date, to_date = to_date, from_date
 
     qs_filtered = qs.filter(date__gte=from_date, date__lte=to_date)
-    spending_qs = exclude_iou_linked_transactions(qs_filtered)
+    spending_qs = exclude_from_spending_statistics(qs_filtered)
 
     profile = ensure_user_profile(request.user)
     display = convert_for_display(
@@ -503,6 +576,199 @@ def delete_investment(request, pk):
 
 
 @login_required
+def bank_accounts(request):
+    accounts = bank_accounts_for_user(request.user)
+    account_rows = [
+        {
+            "account": account,
+            "balance": bank_account_balance(account),
+            "can_delete": (not account.is_cash and bank_account_is_empty(account)),
+        }
+        for account in accounts
+    ]
+    transfers = (
+        Transfer.objects.filter(user=request.user)
+        .select_related(
+            "from_bank_account",
+            "to_bank_account",
+            "source_transaction",
+            "destination_transaction",
+        )
+        .order_by("-source_transaction__date", "-created_at")
+    )
+    return render(
+        request,
+        "financetracker/bank_accounts.html",
+        {"account_rows": account_rows, "transfers": transfers},
+    )
+
+
+@login_required
+def add_transfer(request):
+    if request.method == "POST":
+        form = TransferForm(request.POST, user=request.user)
+        if form.is_valid():
+            try:
+                create_transfer(
+                    request.user,
+                    from_bank_account=form.cleaned_data["from_bank_account"],
+                    to_bank_account=form.cleaned_data["to_bank_account"],
+                    amount=form.cleaned_data["amount"],
+                    transfer_date=form.cleaned_data["date"],
+                )
+            except BankAccountError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "Transfer created.")
+                return redirect("bank_accounts")
+    else:
+        form = TransferForm(
+            user=request.user,
+            initial={"date": timezone.now().date()},
+        )
+
+    return render(
+        request,
+        "financetracker/add_transfer.html",
+        {"form": form, "title": "Add Transfer"},
+    )
+
+
+@login_required
+def edit_transfer(request, pk):
+    transfer = get_object_or_404(
+        Transfer.objects.select_related(
+            "from_bank_account",
+            "to_bank_account",
+            "source_transaction",
+        ),
+        pk=pk,
+        user=request.user,
+    )
+    if request.method == "POST":
+        form = TransferForm(request.POST, user=request.user)
+        if form.is_valid():
+            try:
+                update_transfer(
+                    transfer,
+                    from_bank_account=form.cleaned_data["from_bank_account"],
+                    to_bank_account=form.cleaned_data["to_bank_account"],
+                    amount=form.cleaned_data["amount"],
+                    transfer_date=form.cleaned_data["date"],
+                )
+            except BankAccountError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "Transfer updated.")
+                return redirect("bank_accounts")
+    else:
+        form = TransferForm(
+            user=request.user,
+            initial={
+                "from_bank_account": transfer.from_bank_account_id,
+                "to_bank_account": transfer.to_bank_account_id,
+                "amount": transfer.source_transaction.amount,
+                "date": transfer.source_transaction.date,
+            },
+        )
+
+    return render(
+        request,
+        "financetracker/add_transfer.html",
+        {"form": form, "title": "Edit Transfer", "transfer": transfer},
+    )
+
+
+@login_required
+@require_POST
+def delete_transfer_view(request, pk):
+    transfer = get_object_or_404(Transfer, pk=pk, user=request.user)
+    delete_transfer(transfer)
+    messages.success(request, "Transfer deleted.")
+    return redirect("bank_accounts")
+
+
+@login_required
+def add_bank_account(request):
+    currency_context = _transaction_currency_context(request)
+    if currency_context is None:
+        messages.error(
+            request,
+            "Couldn't load supported currencies right now. Try again in a moment.",
+        )
+        return render(
+            request,
+            "financetracker/add_bank_account.html",
+            {"form": None, "currency_error": True},
+            status=200,
+        )
+
+    if request.method == "POST":
+        form = BankAccountCreateForm(
+            request.POST,
+            currency_choices=currency_context["currency_choices"],
+        )
+        if form.is_valid():
+            create_bank_account(
+                request.user,
+                name=form.cleaned_data["name"],
+                currency=form.cleaned_data["currency"],
+                kind=form.cleaned_data["kind"],
+                opening_balance=form.cleaned_data["opening_balance"],
+            )
+            messages.success(request, "Bank account created.")
+            return redirect("bank_accounts")
+    else:
+        form = BankAccountCreateForm(
+            currency_choices=currency_context["currency_choices"],
+            default_currency=currency_context["default_currency"],
+        )
+
+    return render(
+        request,
+        "financetracker/add_bank_account.html",
+        {"form": form},
+    )
+
+
+@login_required
+def edit_bank_account(request, pk):
+    account = get_object_or_404(
+        BankAccount,
+        pk=pk,
+        user=request.user,
+        is_cash=False,
+    )
+    if request.method == "POST":
+        form = BankAccountRenameForm(request.POST)
+        if form.is_valid():
+            rename_bank_account(account, form.cleaned_data["name"])
+            messages.success(request, "Bank account renamed.")
+            return redirect("bank_accounts")
+    else:
+        form = BankAccountRenameForm(initial={"name": account.name})
+
+    return render(
+        request,
+        "financetracker/edit_bank_account.html",
+        {"form": form, "account": account},
+    )
+
+
+@login_required
+@require_POST
+def delete_bank_account_view(request, pk):
+    account = get_object_or_404(BankAccount, pk=pk, user=request.user)
+    try:
+        delete_bank_account(account)
+    except BankAccountError as exc:
+        messages.error(request, str(exc))
+        return redirect("bank_accounts")
+    messages.success(request, "Bank account deleted.")
+    return redirect("bank_accounts")
+
+
+@login_required
 def ious(request):
     receivables = active_iou_queryset(request.user, direction=IOU.RECEIVABLE)
     payables = active_iou_queryset(request.user, direction=IOU.PAYABLE)
@@ -543,6 +809,7 @@ def add_lend(request):
     if request.method == "POST":
         form = LendForm(
             request.POST,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
         )
         if form.is_valid():
@@ -553,6 +820,7 @@ def add_lend(request):
                 currency=form.cleaned_data["currency"],
                 due_date=form.cleaned_data.get("due_date"),
                 transaction_date=form.cleaned_data["date"],
+                bank_account=form.cleaned_data["bank_account"],
             )
             messages.success(request, "Lending recorded successfully.")
             return redirect("ious")
@@ -562,6 +830,7 @@ def add_lend(request):
                 "date": timezone.now().date(),
                 "currency": currency_context["default_currency"],
             },
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
             default_currency=currency_context["default_currency"],
         )
@@ -596,6 +865,7 @@ def add_borrow(request):
     if request.method == "POST":
         form = BorrowForm(
             request.POST,
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
         )
         if form.is_valid():
@@ -606,6 +876,7 @@ def add_borrow(request):
                 currency=form.cleaned_data["currency"],
                 due_date=form.cleaned_data.get("due_date"),
                 transaction_date=form.cleaned_data["date"],
+                bank_account=form.cleaned_data["bank_account"],
             )
             messages.success(request, "Borrowing recorded successfully.")
             return redirect("ious")
@@ -615,6 +886,7 @@ def add_borrow(request):
                 "date": timezone.now().date(),
                 "currency": currency_context["default_currency"],
             },
+            user=request.user,
             currency_choices=currency_context["currency_choices"],
             default_currency=currency_context["default_currency"],
         )
@@ -628,8 +900,20 @@ def add_borrow(request):
 
 @login_required
 def iou_detail(request, pk):
-    iou = get_object_or_404(IOU, pk=pk, user=request.user)
-    repayments = iou.repayments.select_related("transaction").order_by(
+    iou = get_object_or_404(
+        IOU.objects.select_related(
+            "opening_transaction",
+            "opening_transaction__bank_account",
+            "opening_transaction__category",
+        ),
+        pk=pk,
+        user=request.user,
+    )
+    repayments = iou.repayments.select_related(
+        "transaction",
+        "transaction__bank_account",
+        "transaction__category",
+    ).order_by(
         "-transaction__date",
         "-created_at",
     )
@@ -682,6 +966,7 @@ def iou_detail(request, pk):
             )
             repay_form = RepayForm(
                 request.POST,
+                user=request.user,
                 max_amount=iou.remaining_amount + repayment.amount,
                 currency=iou.currency,
             )
@@ -720,6 +1005,7 @@ def iou_detail(request, pk):
 
             repay_form = RepayForm(
                 request.POST,
+                user=request.user,
                 max_amount=iou.remaining_amount,
                 currency=iou.currency,
             )
@@ -729,6 +1015,7 @@ def iou_detail(request, pk):
                         iou,
                         amount=repay_form.cleaned_data["amount"],
                         transaction_date=repay_form.cleaned_data["date"],
+                        bank_account=repay_form.cleaned_data["bank_account"],
                     )
                 except ValueError as exc:
                     messages.error(request, str(exc))
@@ -739,6 +1026,7 @@ def iou_detail(request, pk):
         if iou.status == IOU.ACTIVE:
             repay_form = RepayForm(
                 initial={"date": timezone.now().date()},
+                user=request.user,
                 max_amount=iou.remaining_amount,
                 currency=iou.currency,
             )
@@ -753,6 +1041,7 @@ def iou_detail(request, pk):
         if repay_form is None:
             repay_form = RepayForm(
                 initial={"date": timezone.now().date()},
+                user=request.user,
                 max_amount=iou.remaining_amount,
                 currency=iou.currency,
             )
@@ -848,7 +1137,7 @@ def settings_view(request):
         "currency_form": currency_form,
         "theme_choices": THEME_CHOICES,
         "selected_theme": for_request(request),
-        "transaction_count": exclude_iou_linked_transactions(
+        "transaction_count": exclude_from_spending_statistics(
             Transaction.objects.filter(user=request.user)
         ).count(),
         "investment_count": InvestmentEntry.objects.filter(user=request.user).count(),
@@ -862,7 +1151,7 @@ def settings_view(request):
 @login_required
 @require_POST
 def clear_all_transactions(request):
-    qs = exclude_iou_linked_transactions(Transaction.objects.filter(user=request.user))
+    qs = exclude_from_spending_statistics(Transaction.objects.filter(user=request.user))
     count = qs.count()
     qs.delete()
     messages.success(request, f"Deleted all {count} transaction(s).")

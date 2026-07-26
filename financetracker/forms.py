@@ -4,7 +4,12 @@ from django import forms
 from django.contrib.auth.forms import PasswordChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import InvestmentEntry, IOU, Transaction, UserProfile
+from .models import BankAccount, InvestmentEntry, IOU, Transaction, UserProfile
+from .services.bank_accounts import (
+    assert_transaction_currency_matches_bank_account,
+    bank_accounts_for_user,
+    BankAccountError,
+)
 from .services.iou import selectable_categories
 
 COMMON_CURRENCY_CODES = ("CZK", "USD", "EUR", "JPY", "GBP", "CNY")
@@ -131,10 +136,25 @@ class TransactionForm(forms.ModelForm):
         label="Currency",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+    bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        required=True,
+        label="Bank account",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
 
     class Meta:
         model = Transaction
-        fields = ["type", "amount", "currency", "category", "description", "date"]
+        fields = [
+            "type",
+            "amount",
+            "currency",
+            "bank_account",
+            "category",
+            "description",
+            "date",
+        ]
         widgets = {
             "type": forms.Select(attrs={"class": "form-select"}),
             "amount": forms.NumberInput(attrs={"class": "form-control", "step": "0.01", "min": "0.01", "placeholder": "0.00"}),
@@ -143,13 +163,20 @@ class TransactionForm(forms.ModelForm):
             "date": forms.DateInput(attrs={"class": "form-control", "type": "date"}),
         }
 
-    def __init__(self, *args, currency_choices=None, default_currency=None, **kwargs):
+    def __init__(self, *args, user=None, currency_choices=None, default_currency=None, **kwargs):
         super().__init__(*args, **kwargs)
         choices = list(currency_choices or [])
         self.fields["currency"].choices = choices
         self.fields["category"].queryset = selectable_categories()
         self.fields["category"].empty_label = "— No category —"
         self.fields["category"].required = False
+        if user is not None:
+            accounts = bank_accounts_for_user(user)
+            self.fields["bank_account"].queryset = accounts
+            if not self.instance.pk:
+                cash = accounts.filter(is_cash=True).first()
+                if cash is not None:
+                    self.fields["bank_account"].initial = cash.pk
         if not self.instance.pk and default_currency:
             self.fields["currency"].initial = default_currency
 
@@ -160,6 +187,157 @@ class TransactionForm(forms.ModelForm):
         if normalized not in valid_codes:
             raise forms.ValidationError("Select a supported currency.")
         return normalized
+
+    def clean(self):
+        cleaned = super().clean()
+        currency = cleaned.get("currency")
+        bank_account = cleaned.get("bank_account")
+        if currency and bank_account is not None:
+            try:
+                assert_transaction_currency_matches_bank_account(
+                    currency=currency,
+                    bank_account=bank_account,
+                )
+            except BankAccountError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+        return cleaned
+
+
+class AssignBankAccountForm(forms.Form):
+    bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        required=True,
+        label="Bank account",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    def __init__(self, *args, user_id=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        queryset = BankAccount.objects.all()
+        if user_id is not None:
+            queryset = queryset.filter(user_id=user_id)
+        self.fields["bank_account"].queryset = queryset
+
+
+class BankAccountCreateForm(forms.Form):
+    name = forms.CharField(
+        max_length=100,
+        label="Name",
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "e.g. ČSOB savings"},
+        ),
+    )
+    currency = forms.ChoiceField(
+        choices=[],
+        required=True,
+        label="Bank account currency",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    kind = forms.ChoiceField(
+        choices=[("", "— Optional —"), *BankAccount.KIND_CHOICES],
+        required=False,
+        label="Kind",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    opening_balance = forms.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        label="Opening balance",
+        initial=Decimal("0"),
+        widget=forms.NumberInput(
+            attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "placeholder": "0.00",
+            },
+        ),
+    )
+
+    def __init__(self, *args, currency_choices=None, default_currency=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["currency"].choices = list(currency_choices or [])
+        if default_currency and not self.is_bound:
+            self.fields["currency"].initial = default_currency
+
+    def clean_currency(self):
+        code = self.cleaned_data.get("currency", "")
+        valid_codes = set(currency_choice_values(self.fields["currency"].choices))
+        normalized = code.upper()
+        if normalized not in valid_codes:
+            raise forms.ValidationError("Select a supported currency.")
+        return normalized
+
+    def clean_opening_balance(self):
+        value = self.cleaned_data.get("opening_balance")
+        if value is None:
+            return Decimal("0")
+        return value
+
+    def clean_kind(self):
+        return self.cleaned_data.get("kind") or ""
+
+
+class BankAccountRenameForm(forms.Form):
+    name = forms.CharField(
+        max_length=100,
+        label="Name",
+        widget=forms.TextInput(attrs={"class": "form-control"}),
+    )
+
+
+class TransferForm(forms.Form):
+    from_bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        label="From",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    to_bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        label="To",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    amount = forms.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        label="Amount",
+        widget=forms.NumberInput(
+            attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "min": "0.01",
+                "placeholder": "0.00",
+            },
+        ),
+    )
+    date = forms.DateField(
+        label="Date",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        if user is not None:
+            accounts = bank_accounts_for_user(user)
+            self.fields["from_bank_account"].queryset = accounts
+            self.fields["to_bank_account"].queryset = accounts
+
+    def clean(self):
+        cleaned = super().clean()
+        from_account = cleaned.get("from_bank_account")
+        to_account = cleaned.get("to_bank_account")
+        if (
+            from_account is not None
+            and to_account is not None
+            and from_account.pk == to_account.pk
+        ):
+            raise forms.ValidationError(
+                "Transfer source and destination must differ."
+            )
+        return cleaned
 
 
 class InvestmentEntryForm(forms.ModelForm):
@@ -196,6 +374,13 @@ class LendForm(forms.Form):
         label="Currency",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+    bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        required=True,
+        label="Bank account",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     due_date = forms.DateField(
         required=False,
         label="Due date",
@@ -206,12 +391,26 @@ class LendForm(forms.Form):
         widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
 
-    def __init__(self, *args, currency_choices=None, default_currency=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        user=None,
+        currency_choices=None,
+        default_currency=None,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         choices = list(currency_choices or [])
         self.fields["currency"].choices = choices
         if default_currency and not self.is_bound:
             self.fields["currency"].initial = default_currency
+        if user is not None:
+            accounts = bank_accounts_for_user(user)
+            self.fields["bank_account"].queryset = accounts
+            if not self.is_bound:
+                cash = accounts.filter(is_cash=True).first()
+                if cash is not None:
+                    self.fields["bank_account"].initial = cash.pk
 
     def clean_currency(self):
         code = self.cleaned_data.get("currency", "")
@@ -220,6 +419,20 @@ class LendForm(forms.Form):
         if normalized not in valid_codes:
             raise forms.ValidationError("Select a supported currency.")
         return normalized
+
+    def clean(self):
+        cleaned = super().clean()
+        currency = cleaned.get("currency")
+        bank_account = cleaned.get("bank_account")
+        if currency and bank_account is not None:
+            try:
+                assert_transaction_currency_matches_bank_account(
+                    currency=currency,
+                    bank_account=bank_account,
+                )
+            except BankAccountError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+        return cleaned
 
 
 class BorrowForm(LendForm):
@@ -241,15 +454,29 @@ class RepayForm(forms.Form):
             attrs={"class": "form-control", "step": "0.01", "min": "0.01", "placeholder": "0.00"},
         ),
     )
+    bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        required=True,
+        label="Bank account",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     date = forms.DateField(
         label="Transaction date",
         widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
 
-    def __init__(self, *args, max_amount=None, currency=None, **kwargs):
+    def __init__(self, *args, user=None, max_amount=None, currency=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_amount = max_amount
         self.currency = currency
+        if user is not None:
+            accounts = bank_accounts_for_user(user)
+            self.fields["bank_account"].queryset = accounts
+            if not self.is_bound:
+                cash = accounts.filter(is_cash=True).first()
+                if cash is not None:
+                    self.fields["bank_account"].initial = cash.pk
 
     def clean_amount(self):
         amount = self.cleaned_data.get("amount")
@@ -261,6 +488,19 @@ class RepayForm(forms.Form):
                 f"({self.max_amount:.2f} {self.currency})."
             )
         return amount
+
+    def clean(self):
+        cleaned = super().clean()
+        bank_account = cleaned.get("bank_account")
+        if self.currency and bank_account is not None:
+            try:
+                assert_transaction_currency_matches_bank_account(
+                    currency=self.currency,
+                    bank_account=bank_account,
+                )
+            except BankAccountError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+        return cleaned
 
 
 class IOUMetadataForm(forms.Form):

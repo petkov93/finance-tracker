@@ -4,6 +4,34 @@ Personal finance tracking for day-to-day income, expenses, and investments. Tran
 
 ## Language
 
+**Bank account**:
+A named money container the user owns (for example a checking, savings, or credit account at a bank, or Cash), which holds day-to-day transactions in a single Bank account currency.
+_Avoid_: Account (alone), wallet, pot, bucket, ledger account
+
+**Bank account currency**:
+The single currency in which a Bank account holds money and in which that Bank account's own balance is expressed. Chosen when the Bank account is created and not changed afterward.
+_Avoid_: Account native currency, pot currency, home currency (for a Bank account)
+
+**Bank account kind**:
+An optional label on a Bank account from a small fixed set — checking, savings, or credit. Cash is identified as Cash, not by this kind.
+_Avoid_: Account type, account class, product type
+
+**Cash**:
+The single Bank account per user that represents their physical money on hand (coins and bills), not money held at a bank. It cannot be deleted.
+_Avoid_: Cash wallet, petty cash, physical account, cash balance (as the name of the container)
+
+**Opening balance**:
+The starting amount already in a Bank account when it is created, recorded so Bank account balance and Available balance are correct from day one without counting as day-to-day earning or spending. Excluded from Spending statistics and Spending and income totals.
+_Avoid_: Initial deposit, seed balance, starting transaction (as the domain name for this concept)
+
+**Transfer**:
+A move of money between two of the user's Bank accounts, recorded so Bank account balances update without counting as day-to-day earning or spending. Same-currency Transfers move one amount; cross-currency Transfers debit the source Bank account currency and credit the destination via Currency conversion. Excluded from Spending statistics and Spending and income totals; does not use a spending Category.
+_Avoid_: Internal transfer, pot move, wallet transfer, account transfer (alone)
+
+**Bank account balance**:
+How much a Bank account currently holds, expressed in that Bank account currency: Opening balance plus income minus expenses on that Bank account (may be negative, for example on a credit-kind Bank account).
+_Avoid_: Pot total, account equity, ledger balance (alone)
+
 **Default currency**:
 The unit of account a user thinks in for dashboard balances and statistics.
 _Avoid_: Display currency, home currency, preferred currency
@@ -17,7 +45,7 @@ A fixed, product-curated subset of supported currencies shown first in currency 
 _Avoid_: Recommended currencies, popular currencies, weighted currencies, featured currencies
 
 **Transaction currency**:
-The currency in which a transaction amount was actually paid or received.
+The currency in which a transaction amount was actually paid or received. For a transaction on a Bank account, it matches that Bank account currency.
 _Avoid_: Native currency, native code, source currency, original currency field
 
 **Display conversion**:
@@ -81,7 +109,7 @@ An IOU where the user borrowed money and still owes the remaining amount.
 _Avoid_: Borrow IOU, money I owe, liability IOU
 
 **Available balance**:
-Cash position from all-time income minus expenses, display-converted to the user's default currency, including IOU-linked cash movements.
+Display-converted sum of all Bank account balances into the user's Default currency (including IOU-linked cash on those Bank accounts). Cross-currency Bank accounts use the latest exchange rate (same rate source as display conversion for today's date).
 _Avoid_: Balance, net worth, total cash
 
 **Total balance**:
@@ -89,7 +117,7 @@ Available balance plus open receivables minus open payables, each IOU amount dis
 _Avoid_: Net worth, economic balance, adjusted balance
 
 **Spending and income totals**:
-Dashboard income and expense figures that exclude IOU-linked transactions; they reflect day-to-day earning and spending only.
+Dashboard income and expense figures that exclude IOU-linked transactions, Opening balance, and Transfers; they reflect day-to-day earning and spending only.
 _Avoid_: Real income, core expenses, non-IOU totals
 
 **Finished IOU**:
@@ -101,9 +129,9 @@ The date of the IOU opening transaction — when the lend or borrow cash movemen
 _Avoid_: Created date, IOU opened at, inception timestamp
 
 **IOU-linked transaction**:
-A transaction tied to an IOU as its opening movement or a recorded repayment.
+A transaction tied to an IOU as its opening movement or a recorded repayment. It belongs to a Bank account chosen when the IOU is opened or the repayment is recorded (default Cash).
 _Avoid_: Loan transaction, debt entry, IOU expense
 
 **Spending statistics**:
-Income, expense, and category breakdowns that exclude IOU-linked transactions, on both the dashboard pills and the statistics page.
+Income, expense, and category breakdowns that exclude IOU-linked transactions, Opening balance, and Transfers, on both the dashboard pills and the statistics page.
 _Avoid_: Core stats, non-IOU analytics, regular spending view

@@ -1,0 +1,114 @@
+{% extends "financetracker/base.html" %}
+{% load money %}
+{% block title %}Bank accounts — Finance Tracker{% endblock %}
+
+{% block content %}
+<div class="page-header animate-in">
+  <div>
+    <p class="page-eyebrow">Money containers</p>
+    <h1 class="page-title">Bank accounts</h1>
+  </div>
+  <div class="page-actions">
+    <a href="{% url 'add_transfer' %}" class="btn btn-ghost">Transfer</a>
+    <a href="{% url 'add_bank_account' %}" class="btn btn-primary">+ Add Bank account</a>
+  </div>
+</div>
+
+<section class="section animate-in animate-in-delay-1">
+  {% if account_rows %}
+    <div class="transaction-list">
+      {% for row in account_rows %}
+        {% with account=row.account %}
+        <div class="transaction-row">
+          <div class="transaction-left">
+            <div class="transaction-icon {% if account.is_cash %}icon-income{% else %}icon-expense{% endif %}">
+              {% if account.is_cash %}₵{% elif account.kind == "credit" %}⊖{% else %}⊕{% endif %}
+            </div>
+            <div class="transaction-info">
+              <div class="transaction-desc">{{ account.name }}</div>
+              <div class="transaction-meta">
+                {{ account.currency }}
+                {% if account.is_cash %}
+                  · Cash
+                {% elif account.kind %}
+                  · {{ account.get_kind_display }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="transaction-right">
+            <div class="transaction-amount {% if row.balance < 0 %}amount-expense{% else %}amount-income{% endif %}">
+              {% money row.balance account.currency %}
+            </div>
+            <div class="transaction-actions">
+              {% if not account.is_cash %}
+                <a href="{% url 'edit_bank_account' account.pk %}" class="action-link edit">Rename</a>
+                {% if row.can_delete %}
+                  <form method="post" action="{% url 'delete_bank_account' account.pk %}" class="inline-form" onsubmit="return confirm('Delete this Bank account?')">
+                    {% csrf_token %}
+                    <button type="submit" class="action-link delete">Delete</button>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endwith %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <p class="empty-title">No Bank accounts yet</p>
+      <p class="empty-sub">Create a Bank account to separate cash, savings, or credit.</p>
+      <a href="{% url 'add_bank_account' %}" class="btn btn-primary">Add Bank account</a>
+    </div>
+  {% endif %}
+</section>
+
+<section class="section animate-in animate-in-delay-2">
+  <div class="section-header">
+    <h2 class="section-title">Transfers</h2>
+  </div>
+  {% if transfers %}
+    <div class="transaction-list">
+      {% for transfer in transfers %}
+        <div class="transaction-row">
+          <div class="transaction-left">
+            <div class="transaction-icon icon-expense">⇄</div>
+            <div class="transaction-info">
+              <div class="transaction-desc">
+                {{ transfer.from_bank_account.name }} → {{ transfer.to_bank_account.name }}
+              </div>
+              <div class="transaction-meta">
+                {{ transfer.source_transaction.date|date:"M j, Y" }}
+                {% if transfer.source_transaction.currency != transfer.destination_transaction.currency %}
+                  · {% money transfer.source_transaction.amount transfer.source_transaction.currency %}
+                    → {% money transfer.destination_transaction.amount transfer.destination_transaction.currency %}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="transaction-right">
+            <div class="transaction-amount amount-expense">
+              {% money transfer.source_transaction.amount transfer.source_transaction.currency %}
+            </div>
+            <div class="transaction-actions">
+              <a href="{% url 'edit_transfer' transfer.pk %}" class="action-link edit">Edit</a>
+              <form method="post" action="{% url 'delete_transfer' transfer.pk %}" class="inline-form" onsubmit="return confirm('Delete this Transfer?')">
+                {% csrf_token %}
+                <button type="submit" class="action-link delete">Delete</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <p class="empty-title">No Transfers yet</p>
+      <p class="empty-sub">Move money between your Bank accounts without affecting Spending statistics.</p>
+      <a href="{% url 'add_transfer' %}" class="btn btn-primary">Add Transfer</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

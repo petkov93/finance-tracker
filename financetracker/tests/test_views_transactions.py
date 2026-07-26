@@ -6,6 +6,10 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import IOU, Transaction, UserProfile, ensure_user_profile
+from financetracker.services.bank_accounts import (
+    create_bank_account,
+    ensure_cash_bank_account,
+)
 from financetracker.services.iou import create_receivable, record_repayment
 from financetracker.services.currency import RateResult
 from financetracker.tests.factories import (
@@ -40,6 +44,7 @@ class TransactionViewsTests(TestCase):
         self.addCleanup(self.supported_patcher.stop)
         ensure_user_profile(self.user)
         ensure_user_profile(self.other_user)
+        self.cash = ensure_cash_bank_account(self.user)
 
     def test_add_transaction(self):
         response = self.client.post(
@@ -48,6 +53,7 @@ class TransactionViewsTests(TestCase):
                 "type": Transaction.INCOME,
                 "amount": "1500.50",
                 "currency": "CZK",
+                "bank_account": self.cash.pk,
                 "category": self.category.pk,
                 "description": "Salary",
                 "date": "2025-01-15",
@@ -72,6 +78,7 @@ class TransactionViewsTests(TestCase):
                 "type": Transaction.EXPENSE,
                 "amount": "75.00",
                 "currency": "CZK",
+                "bank_account": self.cash.pk,
                 "category": self.category.pk,
                 "description": "Updated lunch",
                 "date": transaction.date.isoformat(),
@@ -122,12 +129,18 @@ class TransactionViewsTests(TestCase):
     def test_dashboard_converted_totals_with_mixed_currencies(self):
         past = date.today() - timedelta(days=7)
         UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        eur_account = create_bank_account(
+            self.user,
+            name="Revolut",
+            currency="EUR",
+        )
         create_transaction(
             self.user,
             amount=Decimal("10.00"),
             currency="EUR",
             type=Transaction.INCOME,
             transaction_date=past,
+            bank_account=eur_account,
         )
         create_transaction(
             self.user,
@@ -135,16 +148,25 @@ class TransactionViewsTests(TestCase):
             currency="CZK",
             type=Transaction.EXPENSE,
             transaction_date=past,
+            bank_account=self.cash,
         )
 
-        with patch(
-            "financetracker.services.display_conversion.get_rates",
-            side_effect=_constant_get_rates(Decimal("25.00")),
+        rates = _constant_get_rates(Decimal("25.00"))
+        with (
+            patch(
+                "financetracker.services.display_conversion.get_rates",
+                side_effect=rates,
+            ),
+            patch(
+                "financetracker.services.bank_accounts.get_rates",
+                side_effect=rates,
+            ),
         ):
             response = self.client.get(reverse("dashboard"))
 
         self.assertEqual(response.context["total_income"], Decimal("250.00"))
         self.assertEqual(response.context["total_expense"], Decimal("100.00"))
+        # Available: -100 CZK cash + (10 EUR * 25) = 150
         self.assertEqual(response.context["available"], Decimal("150.00"))
         self.assertEqual(response.context["total"], Decimal("150.00"))
 
@@ -233,16 +255,28 @@ class TransactionViewsTests(TestCase):
 
     def test_dashboard_degradation_shows_warning_and_transaction_currency_amounts(self):
         UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
+        eur_account = create_bank_account(
+            self.user,
+            name="Revolut",
+            currency="EUR",
+        )
         create_transaction(
             self.user,
             amount=Decimal("10.00"),
             currency="EUR",
             transaction_date=date.today(),
+            bank_account=eur_account,
         )
 
-        with patch(
-            "financetracker.services.display_conversion.get_rates",
-            return_value={},
+        with (
+            patch(
+                "financetracker.services.display_conversion.get_rates",
+                return_value={},
+            ),
+            patch(
+                "financetracker.services.bank_accounts.get_rates",
+                return_value={},
+            ),
         ):
             response = self.client.get(reverse("dashboard"))
 
@@ -256,17 +290,30 @@ class TransactionViewsTests(TestCase):
     def test_dashboard_stale_rates_show_info_banner_and_totals(self):
         UserProfile.objects.filter(user=self.user).update(default_currency="CZK")
         yesterday = date.today() - timedelta(days=1)
+        eur_account = create_bank_account(
+            self.user,
+            name="Revolut",
+            currency="EUR",
+        )
         create_transaction(
             self.user,
             amount=Decimal("10.00"),
             currency="EUR",
             type="income",
             transaction_date=date.today(),
+            bank_account=eur_account,
         )
 
-        with patch(
-            "financetracker.services.display_conversion.get_rates",
-            side_effect=_constant_get_rates(Decimal("25.00"), stale_date=yesterday),
+        rates = _constant_get_rates(Decimal("25.00"), stale_date=yesterday)
+        with (
+            patch(
+                "financetracker.services.display_conversion.get_rates",
+                side_effect=rates,
+            ),
+            patch(
+                "financetracker.services.bank_accounts.get_rates",
+                side_effect=rates,
+            ),
         ):
             response = self.client.get(reverse("dashboard"))
 
