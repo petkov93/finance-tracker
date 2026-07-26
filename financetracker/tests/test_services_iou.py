@@ -5,6 +5,10 @@ from unittest.mock import patch
 from django.test import TestCase
 
 from financetracker.models import Category, IOU, IOURepayment, Transaction
+from financetracker.services.bank_accounts import (
+    BankAccountError,
+    ensure_cash_bank_account,
+)
 from financetracker.services.currency import RateResult
 from financetracker.services.iou import (
     BORROWING_CATEGORY_NAME,
@@ -27,7 +31,12 @@ from financetracker.services.iou import (
     active_iou_queryset,
     exclude_iou_linked_transactions,
 )
-from financetracker.tests.factories import create_iou, create_transaction, create_user
+from financetracker.tests.factories import (
+    create_bank_account,
+    create_iou,
+    create_transaction,
+    create_user,
+)
 
 
 def _constant_get_rates(rate, stale_date=None):
@@ -65,6 +74,43 @@ class IouServiceTests(TestCase):
         self.assertEqual(opening.category.name, LENDING_CATEGORY_NAME)
         self.assertEqual(opening.category.type, Category.EXPENSE)
         self.assertIn("Jamie", opening.description)
+        self.assertEqual(opening.bank_account, ensure_cash_bank_account(self.user))
+
+    def test_create_receivable_assigns_opening_transaction_to_chosen_bank_account(self):
+        savings = create_bank_account(
+            self.user,
+            name="Savings",
+            currency="CZK",
+        )
+
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+            bank_account=savings,
+        )
+
+        self.assertEqual(iou.opening_transaction.bank_account, savings)
+
+    def test_create_receivable_rejects_currency_mismatch_with_bank_account(self):
+        savings = create_bank_account(
+            self.user,
+            name="Euro pot",
+            currency="EUR",
+        )
+
+        with self.assertRaises(BankAccountError):
+            create_receivable(
+                self.user,
+                counterparty_name="Jamie",
+                amount=Decimal("500.00"),
+                currency="CZK",
+                bank_account=savings,
+            )
+
+        self.assertEqual(IOU.objects.count(), 0)
+        self.assertEqual(Transaction.objects.count(), 0)
 
     def test_ensure_lending_category_is_idempotent(self):
         first = ensure_lending_category()
@@ -270,6 +316,10 @@ class IouServiceTests(TestCase):
         self.assertEqual(repayment.transaction.type, Transaction.INCOME)
         self.assertEqual(repayment.transaction.category.name, LENDING_CATEGORY_NAME)
         self.assertIn("Jamie", repayment.transaction.description)
+        self.assertEqual(
+            repayment.transaction.bank_account,
+            ensure_cash_bank_account(self.user),
+        )
 
         from financetracker.services.display_conversion import convert_for_display
 
@@ -284,6 +334,27 @@ class IouServiceTests(TestCase):
 
         self.assertEqual(available, Decimal("700.00"))
         self.assertEqual(total, Decimal("1000.00"))
+
+    def test_record_repayment_assigns_transaction_to_chosen_bank_account(self):
+        savings = create_bank_account(
+            self.user,
+            name="Savings",
+            currency="CZK",
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+        )
+
+        repayment = record_repayment(
+            iou,
+            amount=Decimal("200.00"),
+            bank_account=savings,
+        )
+
+        self.assertEqual(repayment.transaction.bank_account, savings)
 
     def test_full_repayment_closes_iou_as_paid(self):
         iou = create_receivable(
@@ -751,6 +822,29 @@ class IouSpendingExclusionTests(TestCase):
         self.assertNotIn(iou.opening_transaction_id, qs.values_list("pk", flat=True))
         self.assertNotIn(repayment_tx.pk, qs.values_list("pk", flat=True))
 
+    def test_exclude_iou_linked_transactions_still_applies_on_chosen_bank_account(self):
+        savings = create_bank_account(self.user, name="Savings", currency="CZK")
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+            bank_account=savings,
+        )
+        iou = create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("500.00"),
+            currency="CZK",
+            bank_account=savings,
+        )
+        record_repayment(iou, amount=Decimal("200.00"), bank_account=savings)
+
+        qs = exclude_iou_linked_transactions(Transaction.objects.filter(user=self.user))
+
+        self.assertEqual(qs.count(), 1)
+        self.assertEqual(qs.get().amount, Decimal("1000.00"))
+
     def test_dashboard_spending_totals_exclude_iou_but_available_includes_cash_flow(self):
         create_transaction(
             self.user,
@@ -788,13 +882,19 @@ class UpdateRepaymentTests(TestCase):
         self.user = create_user()
 
     def test_update_repayment_amount_adjusts_remaining(self):
+        euro_pot = create_bank_account(self.user, name="Euro", currency="EUR")
         iou = create_receivable(
             self.user,
             counterparty_name="Jamie",
             amount=Decimal("5.00"),
             currency="EUR",
+            bank_account=euro_pot,
         )
-        repayment = record_repayment(iou, amount=Decimal("3.00"))
+        repayment = record_repayment(
+            iou,
+            amount=Decimal("3.00"),
+            bank_account=euro_pot,
+        )
         iou.refresh_from_db()
         self.assertEqual(iou.remaining_amount, Decimal("2.00"))
 

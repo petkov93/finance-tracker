@@ -36,6 +36,13 @@
       </div>
     </div>
 
+    <div class="form-group">
+      <label class="form-label" for="{{ form.bank_account.id_for_label }}">{{ form.bank_account.label }}</label>
+      {{ form.bank_account }}
+      {% if form.bank_account.errors %}<div class="form-error">{{ form.bank_account.errors.0 }}</div>{% endif %}
+      {% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors.0 }}</div>{% endif %}
+    </div>
+
     <div class="filter-grid">
       <div class="form-group">
         <label class="form-label" for="{{ form.date.id_for_label }}">{{ form.date.label }}</label>

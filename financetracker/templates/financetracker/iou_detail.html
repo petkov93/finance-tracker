@@ -98,10 +98,17 @@
           {% if repay_form.amount.errors %}<div class="form-error">{{ repay_form.amount.errors.0 }}</div>{% endif %}
         </div>
         <div class="form-group">
-          <label class="form-label" for="{{ repay_form.date.id_for_label }}">{{ repay_form.date.label }}</label>
-          {{ repay_form.date }}
-          {% if repay_form.date.errors %}<div class="form-error">{{ repay_form.date.errors.0 }}</div>{% endif %}
+          <label class="form-label" for="{{ repay_form.bank_account.id_for_label }}">{{ repay_form.bank_account.label }}</label>
+          {{ repay_form.bank_account }}
+          {% if repay_form.bank_account.errors %}<div class="form-error">{{ repay_form.bank_account.errors.0 }}</div>{% endif %}
+          {% if repay_form.non_field_errors %}<div class="form-error">{{ repay_form.non_field_errors.0 }}</div>{% endif %}
         </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="{{ repay_form.date.id_for_label }}">{{ repay_form.date.label }}</label>
+        {{ repay_form.date }}
+        {% if repay_form.date.errors %}<div class="form-error">{{ repay_form.date.errors.0 }}</div>{% endif %}
       </div>
 
       <div class="form-actions">
@@ -149,6 +156,9 @@
           <div class="transaction-desc">{{ iou.opening_transaction.description|default:"Opening transaction" }}</div>
           <div class="transaction-meta">
             Opening · {{ iou.opening_transaction.date|date:"d.m.Y" }}
+            {% if iou.opening_transaction.bank_account %}
+              · {{ iou.opening_transaction.bank_account.name }}
+            {% endif %}
             {% if iou.opening_transaction.category %}
               · {{ iou.opening_transaction.category.name }}
             {% endif %}
@@ -172,6 +182,9 @@
             <div class="transaction-desc">{{ repayment.transaction.description|default:"Repayment" }}</div>
             <div class="transaction-meta">
               Repayment · {{ repayment.transaction.date|date:"d.m.Y" }}
+              {% if repayment.transaction.bank_account %}
+                · {{ repayment.transaction.bank_account.name }}
+              {% endif %}
               {% if repayment.transaction.category %}
                 · {{ repayment.transaction.category.name }}
               {% endif %}
@@ -191,6 +204,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="edit_repayment">
                 <input type="hidden" name="repayment_id" value="{{ repayment.pk }}">
+                <input type="hidden" name="bank_account" value="{{ repayment.transaction.bank_account_id }}">
                 <div class="filter-grid">
                   <div class="form-group">
                     <label class="form-label" for="repay-amount-{{ repayment.pk }}">Amount ({{ iou.currency }})</label>
