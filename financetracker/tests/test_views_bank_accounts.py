@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -10,6 +11,8 @@ from financetracker.services.bank_accounts import (
     create_bank_account,
     ensure_cash_bank_account,
 )
+from financetracker.services.currency import RateResult
+from financetracker.services.iou import create_receivable
 from financetracker.tests.factories import (
     DEFAULT_PASSWORD,
     create_transaction,
@@ -17,6 +20,19 @@ from financetracker.tests.factories import (
 )
 
 SUPPORTED = {"CZK": "Czech Koruna", "EUR": "Euro", "USD": "US Dollar"}
+
+
+def _dated_get_rates(rate_by_date):
+    def fake(keys):
+        resolved = {}
+        for key in keys:
+            _from_currency, _to_currency, on_date = key
+            rate = rate_by_date.get(on_date)
+            if rate is not None:
+                resolved[key] = RateResult(rate=rate)
+        return resolved
+
+    return fake
 
 
 class BankAccountViewsTestCase(TestCase):
@@ -189,3 +205,59 @@ class OpeningBalanceSpendingViewTests(BankAccountViewsTestCase):
         response = self.client.get(reverse("statistics"))
 
         self.assertEqual(response.context["total_income"], 100.0)
+
+
+class DashboardAvailableBalanceViewTests(BankAccountViewsTestCase):
+    def test_dashboard_available_sums_multi_currency_bank_accounts_and_total_applies_open_ious(
+        self,
+    ):
+        past = date.today() - timedelta(days=7)
+        create_transaction(
+            self.user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+            bank_account=self.cash,
+        )
+        revolut = create_bank_account(
+            self.user,
+            name="Revolut",
+            currency="EUR",
+            opening_balance=Decimal("10.00"),
+        )
+        revolut.opening_transaction.date = past
+        revolut.opening_transaction.save(update_fields=["date"])
+        create_receivable(
+            self.user,
+            counterparty_name="Jamie",
+            amount=Decimal("200.00"),
+            currency="CZK",
+        )
+
+        rates = _dated_get_rates(
+            {
+                past: Decimal("20.00"),
+                date.today(): Decimal("25.00"),
+            }
+        )
+        with (
+            patch(
+                "financetracker.services.bank_accounts.get_rates",
+                side_effect=rates,
+            ),
+            patch(
+                "financetracker.services.display_conversion.get_rates",
+                side_effect=rates,
+            ),
+            patch(
+                "financetracker.services.iou.get_rates",
+                side_effect=rates,
+            ),
+        ):
+            response = self.client.get(reverse("dashboard"))
+
+        # Pot-sum Available uses today's rate: 800 CZK + (10 EUR * 25) = 1050
+        # (transaction-date conversion would have used 20 → 1000, not 1050)
+        # Total: Available + open receivable 200 = 1250
+        self.assertEqual(response.context["available"], Decimal("1050.00"))
+        self.assertEqual(response.context["total"], Decimal("1250.00"))

@@ -109,7 +109,7 @@ An IOU where the user borrowed money and still owes the remaining amount.
 _Avoid_: Borrow IOU, money I owe, liability IOU
 
 **Available balance**:
-Cash position from all-time income minus expenses, display-converted to the user's default currency, including IOU-linked cash movements.
+Display-converted sum of all Bank account balances into the user's Default currency (including IOU-linked cash on those Bank accounts). Cross-currency Bank accounts use the latest exchange rate (same rate source as display conversion for today's date).
 _Avoid_: Balance, net worth, total cash
 
 **Total balance**:

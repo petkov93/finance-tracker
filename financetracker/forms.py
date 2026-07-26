@@ -374,6 +374,13 @@ class LendForm(forms.Form):
         label="Currency",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+    bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        required=True,
+        label="Bank account",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     due_date = forms.DateField(
         required=False,
         label="Due date",
@@ -384,12 +391,26 @@ class LendForm(forms.Form):
         widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
 
-    def __init__(self, *args, currency_choices=None, default_currency=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        user=None,
+        currency_choices=None,
+        default_currency=None,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         choices = list(currency_choices or [])
         self.fields["currency"].choices = choices
         if default_currency and not self.is_bound:
             self.fields["currency"].initial = default_currency
+        if user is not None:
+            accounts = bank_accounts_for_user(user)
+            self.fields["bank_account"].queryset = accounts
+            if not self.is_bound:
+                cash = accounts.filter(is_cash=True).first()
+                if cash is not None:
+                    self.fields["bank_account"].initial = cash.pk
 
     def clean_currency(self):
         code = self.cleaned_data.get("currency", "")
@@ -398,6 +419,20 @@ class LendForm(forms.Form):
         if normalized not in valid_codes:
             raise forms.ValidationError("Select a supported currency.")
         return normalized
+
+    def clean(self):
+        cleaned = super().clean()
+        currency = cleaned.get("currency")
+        bank_account = cleaned.get("bank_account")
+        if currency and bank_account is not None:
+            try:
+                assert_transaction_currency_matches_bank_account(
+                    currency=currency,
+                    bank_account=bank_account,
+                )
+            except BankAccountError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+        return cleaned
 
 
 class BorrowForm(LendForm):
@@ -419,15 +454,29 @@ class RepayForm(forms.Form):
             attrs={"class": "form-control", "step": "0.01", "min": "0.01", "placeholder": "0.00"},
         ),
     )
+    bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        required=True,
+        label="Bank account",
+        empty_label=None,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
     date = forms.DateField(
         label="Transaction date",
         widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
     )
 
-    def __init__(self, *args, max_amount=None, currency=None, **kwargs):
+    def __init__(self, *args, user=None, max_amount=None, currency=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_amount = max_amount
         self.currency = currency
+        if user is not None:
+            accounts = bank_accounts_for_user(user)
+            self.fields["bank_account"].queryset = accounts
+            if not self.is_bound:
+                cash = accounts.filter(is_cash=True).first()
+                if cash is not None:
+                    self.fields["bank_account"].initial = cash.pk
 
     def clean_amount(self):
         amount = self.cleaned_data.get("amount")
@@ -439,6 +488,19 @@ class RepayForm(forms.Form):
                 f"({self.max_amount:.2f} {self.currency})."
             )
         return amount
+
+    def clean(self):
+        cleaned = super().clean()
+        bank_account = cleaned.get("bank_account")
+        if self.currency and bank_account is not None:
+            try:
+                assert_transaction_currency_matches_bank_account(
+                    currency=self.currency,
+                    bank_account=bank_account,
+                )
+            except BankAccountError as exc:
+                raise forms.ValidationError(str(exc)) from exc
+        return cleaned
 
 
 class IOUMetadataForm(forms.Form):
