@@ -7,7 +7,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from financetracker.models import IOU, Transaction, ensure_user_profile
-from financetracker.services.bank_accounts import create_bank_account
+from financetracker.services.bank_accounts import ensure_cash_bank_account
 from financetracker.services.currency import RateResult
 from financetracker.services.iou import close_unpaid, create_payable, create_receivable
 from financetracker.tests.factories import (
