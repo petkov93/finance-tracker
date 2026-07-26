@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase
 
@@ -9,6 +10,7 @@ from financetracker.services.bank_accounts import (
     assert_transaction_currency_matches_bank_account,
     bank_account_balance,
     bank_accounts_for_user,
+    compute_available_balance,
     create_bank_account,
     delete_bank_account,
     ensure_cash_bank_account,
@@ -16,7 +18,15 @@ from financetracker.services.bank_accounts import (
     exclude_opening_balance_transactions,
     rename_bank_account,
 )
+from financetracker.services.currency import RateResult
 from financetracker.tests.factories import create_transaction, create_user
+
+
+def _constant_get_rates(rate, stale_date=None):
+    def fake(keys):
+        return {key: RateResult(rate=rate, stale_date=stale_date) for key in keys}
+
+    return fake
 
 
 class EnsureCashBankAccountTests(TestCase):
@@ -376,3 +386,77 @@ class OpeningBalanceSpendingExclusionTests(TestCase):
         )
 
         self.assertQuerySetEqual(qs.order_by("pk"), [regular], transform=lambda t: t)
+
+
+class AvailableBalanceTests(TestCase):
+    def test_available_balance_sums_same_currency_bank_account_balances(self):
+        user = create_user()
+        ensure_user_profile(user)
+        cash = ensure_cash_bank_account(user)
+        create_transaction(
+            user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+            bank_account=cash,
+        )
+        create_bank_account(
+            user,
+            name="Savings",
+            currency="CZK",
+            kind=BankAccount.SAVINGS,
+            opening_balance=Decimal("500.00"),
+        )
+
+        result = compute_available_balance(user, "CZK")
+
+        self.assertFalse(result.conversion_degraded)
+        self.assertEqual(result.available, Decimal("1500.00"))
+
+    def test_available_balance_display_converts_multi_currency_bank_accounts(self):
+        user = create_user()
+        ensure_user_profile(user)
+        cash = ensure_cash_bank_account(user)
+        create_transaction(
+            user,
+            amount=Decimal("1000.00"),
+            currency="CZK",
+            type=Transaction.INCOME,
+            bank_account=cash,
+        )
+        create_bank_account(
+            user,
+            name="Revolut",
+            currency="EUR",
+            opening_balance=Decimal("10.00"),
+        )
+
+        with patch(
+            "financetracker.services.bank_accounts.get_rates",
+            side_effect=_constant_get_rates(Decimal("25.00")),
+        ):
+            result = compute_available_balance(user, "CZK")
+
+        self.assertFalse(result.conversion_degraded)
+        # 1000 CZK + (10 EUR * 25) = 1250 CZK
+        self.assertEqual(result.available, Decimal("1250.00"))
+
+    def test_available_balance_degrades_when_bank_account_rate_unavailable(self):
+        user = create_user()
+        ensure_user_profile(user)
+        ensure_cash_bank_account(user)
+        create_bank_account(
+            user,
+            name="Revolut",
+            currency="EUR",
+            opening_balance=Decimal("10.00"),
+        )
+
+        with patch(
+            "financetracker.services.bank_accounts.get_rates",
+            return_value={},
+        ):
+            result = compute_available_balance(user, "CZK")
+
+        self.assertTrue(result.conversion_degraded)
+        self.assertIsNone(result.available)
