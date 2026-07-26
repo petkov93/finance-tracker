@@ -24,6 +24,10 @@ _Avoid_: Cash wallet, petty cash, physical account, cash balance (as the name of
 The starting amount already in a Bank account when it is created, recorded so Bank account balance and Available balance are correct from day one without counting as day-to-day earning or spending. Excluded from Spending statistics and Spending and income totals.
 _Avoid_: Initial deposit, seed balance, starting transaction (as the domain name for this concept)
 
+**Transfer**:
+A move of money between two of the user's Bank accounts, recorded so Bank account balances update without counting as day-to-day earning or spending. Same-currency Transfers move one amount; cross-currency Transfers debit the source Bank account currency and credit the destination via Currency conversion. Excluded from Spending statistics and Spending and income totals; does not use a spending Category.
+_Avoid_: Internal transfer, pot move, wallet transfer, account transfer (alone)
+
 **Bank account balance**:
 How much a Bank account currently holds, expressed in that Bank account currency: Opening balance plus income minus expenses on that Bank account (may be negative, for example on a credit-kind Bank account).
 _Avoid_: Pot total, account equity, ledger balance (alone)
@@ -113,7 +117,7 @@ Available balance plus open receivables minus open payables, each IOU amount dis
 _Avoid_: Net worth, economic balance, adjusted balance
 
 **Spending and income totals**:
-Dashboard income and expense figures that exclude IOU-linked transactions and Opening balance; they reflect day-to-day earning and spending only.
+Dashboard income and expense figures that exclude IOU-linked transactions, Opening balance, and Transfers; they reflect day-to-day earning and spending only.
 _Avoid_: Real income, core expenses, non-IOU totals
 
 **Finished IOU**:
@@ -129,5 +133,5 @@ A transaction tied to an IOU as its opening movement or a recorded repayment. It
 _Avoid_: Loan transaction, debt entry, IOU expense
 
 **Spending statistics**:
-Income, expense, and category breakdowns that exclude IOU-linked transactions and Opening balance, on both the dashboard pills and the statistics page.
+Income, expense, and category breakdowns that exclude IOU-linked transactions, Opening balance, and Transfers, on both the dashboard pills and the statistics page.
 _Avoid_: Core stats, non-IOU analytics, regular spending view

@@ -20,6 +20,7 @@ from .models import (
     InvestmentEntry,
     IOU,
     IOURepayment,
+    Transfer,
     UserProfile,
     ensure_user_profile,
 )
@@ -30,12 +31,17 @@ from .services.bank_accounts import (
     bank_accounts_for_user,
     compute_available_balance,
     create_bank_account,
+    create_transfer,
     delete_bank_account,
+    delete_transfer,
     ensure_user_bank_accounts,
     exclude_from_spending_statistics,
     is_opening_balance_transaction,
+    is_transfer_transaction,
     opening_balance_transaction_ids,
     rename_bank_account,
+    transfer_transaction_ids,
+    update_transfer,
 )
 from .services.theme_constants import THEME_CHOICES
 from .services.theme_preference import for_request, set_preference
@@ -49,6 +55,7 @@ from .forms import (
     LendForm,
     BorrowForm,
     RepayForm,
+    TransferForm,
     IOUMetadataForm,
     ProfileForm,
     RegistrationForm,
@@ -190,6 +197,7 @@ def dashboard(request):
     linked_ids = (
         iou_linked_transaction_ids(request.user)
         | opening_balance_transaction_ids(request.user)
+        | transfer_transaction_ids(request.user)
     )
     display = convert_for_display(
         qs,
@@ -315,6 +323,13 @@ def edit_transaction(request, pk):
             "Opening balance cannot be edited.",
         )
         return redirect("dashboard")
+    if is_transfer_transaction(transaction):
+        messages.error(
+            request,
+            "Transfer legs cannot be edited from the dashboard. "
+            "Manage Transfers on the Bank accounts page.",
+        )
+        return redirect("dashboard")
     if is_iou_linked_transaction(transaction):
         messages.error(
             request,
@@ -383,6 +398,13 @@ def delete_transaction(request, pk):
         messages.error(
             request,
             "Opening balance cannot be deleted.",
+        )
+        return redirect("dashboard")
+    if is_transfer_transaction(transaction):
+        messages.error(
+            request,
+            "Transfer legs cannot be deleted from the dashboard. "
+            "Manage Transfers on the Bank accounts page.",
         )
         return redirect("dashboard")
     if is_iou_linked_transaction(transaction):
@@ -564,11 +586,106 @@ def bank_accounts(request):
         }
         for account in accounts
     ]
+    transfers = (
+        Transfer.objects.filter(user=request.user)
+        .select_related(
+            "from_bank_account",
+            "to_bank_account",
+            "source_transaction",
+            "destination_transaction",
+        )
+        .order_by("-source_transaction__date", "-created_at")
+    )
     return render(
         request,
         "financetracker/bank_accounts.html",
-        {"account_rows": account_rows},
+        {"account_rows": account_rows, "transfers": transfers},
     )
+
+
+@login_required
+def add_transfer(request):
+    if request.method == "POST":
+        form = TransferForm(request.POST, user=request.user)
+        if form.is_valid():
+            try:
+                create_transfer(
+                    request.user,
+                    from_bank_account=form.cleaned_data["from_bank_account"],
+                    to_bank_account=form.cleaned_data["to_bank_account"],
+                    amount=form.cleaned_data["amount"],
+                    transfer_date=form.cleaned_data["date"],
+                )
+            except BankAccountError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "Transfer created.")
+                return redirect("bank_accounts")
+    else:
+        form = TransferForm(
+            user=request.user,
+            initial={"date": timezone.now().date()},
+        )
+
+    return render(
+        request,
+        "financetracker/add_transfer.html",
+        {"form": form, "title": "Add Transfer"},
+    )
+
+
+@login_required
+def edit_transfer(request, pk):
+    transfer = get_object_or_404(
+        Transfer.objects.select_related(
+            "from_bank_account",
+            "to_bank_account",
+            "source_transaction",
+        ),
+        pk=pk,
+        user=request.user,
+    )
+    if request.method == "POST":
+        form = TransferForm(request.POST, user=request.user)
+        if form.is_valid():
+            try:
+                update_transfer(
+                    transfer,
+                    from_bank_account=form.cleaned_data["from_bank_account"],
+                    to_bank_account=form.cleaned_data["to_bank_account"],
+                    amount=form.cleaned_data["amount"],
+                    transfer_date=form.cleaned_data["date"],
+                )
+            except BankAccountError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "Transfer updated.")
+                return redirect("bank_accounts")
+    else:
+        form = TransferForm(
+            user=request.user,
+            initial={
+                "from_bank_account": transfer.from_bank_account_id,
+                "to_bank_account": transfer.to_bank_account_id,
+                "amount": transfer.source_transaction.amount,
+                "date": transfer.source_transaction.date,
+            },
+        )
+
+    return render(
+        request,
+        "financetracker/add_transfer.html",
+        {"form": form, "title": "Edit Transfer", "transfer": transfer},
+    )
+
+
+@login_required
+@require_POST
+def delete_transfer_view(request, pk):
+    transfer = get_object_or_404(Transfer, pk=pk, user=request.user)
+    delete_transfer(transfer)
+    messages.success(request, "Transfer deleted.")
+    return redirect("bank_accounts")
 
 
 @login_required

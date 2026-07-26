@@ -287,6 +287,59 @@ class BankAccountRenameForm(forms.Form):
     )
 
 
+class TransferForm(forms.Form):
+    from_bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        label="From",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    to_bank_account = forms.ModelChoiceField(
+        queryset=BankAccount.objects.none(),
+        label="To",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    amount = forms.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=Decimal("0.01"),
+        label="Amount",
+        widget=forms.NumberInput(
+            attrs={
+                "class": "form-control",
+                "step": "0.01",
+                "min": "0.01",
+                "placeholder": "0.00",
+            },
+        ),
+    )
+    date = forms.DateField(
+        label="Date",
+        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        if user is not None:
+            accounts = bank_accounts_for_user(user)
+            self.fields["from_bank_account"].queryset = accounts
+            self.fields["to_bank_account"].queryset = accounts
+
+    def clean(self):
+        cleaned = super().clean()
+        from_account = cleaned.get("from_bank_account")
+        to_account = cleaned.get("to_bank_account")
+        if (
+            from_account is not None
+            and to_account is not None
+            and from_account.pk == to_account.pk
+        ):
+            raise forms.ValidationError(
+                "Transfer source and destination must differ."
+            )
+        return cleaned
+
+
 class InvestmentEntryForm(forms.ModelForm):
     class Meta:
         model = InvestmentEntry
